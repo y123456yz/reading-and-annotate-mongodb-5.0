@@ -1,0 +1,698 @@
+.TH mongoldap 1
+.SH MONGOLDAP
+.SH SYNOPSIS
+Starting in version 3.4, MongoDB Enterprise provides
+\fBmongoldap\f1\f1 for testing MongoDB\(aqs LDAP \fBconfiguration
+options\f1 against a running LDAP server or set
+of servers.
+.PP
+To validate the LDAP options in the configuration file, set the
+\fBmongoldap\f1\f1 \fB\-\-config\f1\f1 option to the configuration file\(aqs
+path.
+.PP
+To test the LDAP configuration options, you must specify a \fB\-\-user\f1\f1
+and \fB\-\-password\f1\&. \fBmongoldap\f1\f1 simulates authentication to a
+MongoDB server running with the provided configuration options and credentials.
+.PP
+\fBmongoldap\f1\f1 returns a report that includes the success or failure of
+any step in the LDAP authentication or authorization procedure. Error messages
+include information on specific errors encountered and potential advice for
+resolving the error.
+.PP
+When configuring options related to \fBLDAP authorization\f1, \fBmongoldap\f1\f1 executes an LDAP query
+constructed using the provided configuration options and username, and returns
+a list of roles on the \fBadmin\f1 database which the user is authorized for.
+.PP
+You can use this information when configuring \fBLDAP authorization roles\f1 for user access control. For example, use
+\fBmongoldap\f1\f1 to ensure your configuration allows privileged users to
+gain the necessary roles to perform their expected tasks. Similarly, use
+\fBmongoldap\f1\f1 to ensure your configuration disallows non\-privileged
+users from gaining roles for accessing the MongoDB server, or performing
+unauthorized actions.
+.PP
+When configuring options related to \fBLDAP authentication\f1, use \fBmongoldap\f1\f1 to ensure that the authentication
+operation works as expected.
+.PP
+Run \fBmongoldap\f1\f1 from the system command line, not in the
+\fBmongosh\f1\f1\&.
+.PP
+This document provides a complete overview of all command line options for
+\fBmongoldap\f1\f1\&.
+.SH INSTALLATION
+.PP
+The \fBmongoldap\f1\f1 tool is part of the \fIMongoDB Database Tools Extra\f1
+package, and can be \fBinstalled with the MongoDB Server\f1 or as a
+\fBstandalone installation\f1\&.
+.SS INSTALL WITH SERVER
+.PP
+To install \fBmongoldap\f1\f1 as part of a MongoDB Enterprise Server
+installation:
+.RS
+.IP \(bu 2
+Follow the instructions for your platform:
+\fBInstall MongoDB Enterprise Server\f1
+.IP \(bu 2
+After completing the installation, \fBmongoldap\f1\f1 and the other
+included tools are available in the same location as the Server.
+.IP
+For the Windows \fB\&.msi\f1 installer wizard, the
+Complete installation option includes \fBmongoldap\f1\f1\&.
+.RE
+.SS INSTALL AS STANDALONE
+.PP
+To install \fBmongoldap\f1\f1 as a standalone installation:
+.RS
+.IP \(bu 2
+Follow the download link for MongoDB Enterprise Edition:
+MongoDB Enterprise Download Center (https://www.mongodb.com/try/download/enterprise?tck=docs_server)
+.IP \(bu 2
+Select your Platform (operating system) from the dropdown
+menu, then select the appropriate Package for your
+platform according to the following chart:
+.RS
+.IP \(bu 4
+.RS
+.IP \(bu 6
+OS
+.IP \(bu 6
+Package
+.RE
+.IP \(bu 4
+.RS
+.IP \(bu 6
+Linux
+.IP \(bu 6
+\fBtgz\f1 package
+.RE
+.IP \(bu 4
+.RS
+.IP \(bu 6
+Windows
+.IP \(bu 6
+\fBzip\f1 package
+.RE
+.IP \(bu 4
+.RS
+.IP \(bu 6
+macOS
+.IP \(bu 6
+\fBtgz\f1 package
+.RE
+.RE
+.IP \(bu 2
+Once downloaded, unpack the archive and copy \fBmongoldap\f1\f1 to a
+location on your hard drive.
+.IP
+Linux and macOS users may wish to copy \fBmongoldap\f1\f1 to a filesystem
+location that is defined in the \fB$PATH\f1 environment variable, such
+as \fB/usr/bin\f1\&. Doing so allows referencing \fBmongoldap\f1\f1 directly
+on the command line by name, without needing to specify its full
+path, or first navigating to its parent directory. See the
+\fBinstallation guide\f1 for your platform
+for more information.
+.RE
+.SH USAGE
+.PP
+A full description of LDAP or Active Directory is beyond the scope of
+this documentation.
+.PP
+Consider the following sample configuration file, designed to support
+LDAP authentication and authorization via Active Directory:
+.PP
+.EX
+  security:
+     authorization: "enabled"
+     ldap:
+        servers: "activedirectory.example.net"
+        bind:
+           queryUser: "mongodbadmin@dba.example.com"
+           queryPassword: "secret123"
+        userToDNMapping:
+           \(aq[
+              {
+                 match : "(.+)",
+                 ldapQuery: "DC=example,DC=com??sub?(userPrincipalName={0})"
+              }
+           ]\(aq
+        authz:
+           queryTemplate: "DC=example,DC=com??sub?(&(objectClass=group)(member:1.2.840.113556.1.4.1941:={USER}))"
+  setParameter:
+     authenticationMechanisms: "PLAIN"
+.EE
+.PP
+You can use \fBmongoldap\f1\f1 to validate the configuration file, which
+returns a report of the procedure. You must specify a username and password
+for \fBmongoldap\f1\f1\&.
+.PP
+.EX
+  mongoldap \-\-config=<path\-to\-config> \-\-user="bob@dba.example.com" \-\-password="secret123"
+.EE
+.PP
+If the provided credentials are valid, and the LDAP options in the
+configuration files are valid, the output might be as follows:
+.PP
+.EX
+  Checking that an LDAP server has been specified...
+  [OK] LDAP server found
+  
+  Connecting to LDAP server...
+  [OK] Connected to LDAP server
+  
+  Parsing MongoDB to LDAP DN mappings..
+  [OK] MongoDB to LDAP DN mappings appear to be valid
+  
+  Attempting to authenticate against the LDAP server...
+  [OK] Successful authentication performed
+  
+  Checking if LDAP authorization has been enabled by configuration...
+  [OK] LDAP authorization enabled
+  
+  Parsing LDAP query template..
+  [OK] LDAP query configuration template appears valid
+  
+  Executing query against LDAP server...
+  [OK] Successfully acquired the following roles:
+  ...
+.EE
+.SH OPTIONS
+.PP
+\fBmongoldap \-\-config\f1, \fBmongoldap \-f\f1
+.RS
+.PP
+Specifies a configuration file for runtime configuration options.
+The options are equivalent to the command\-line
+configuration options. See \fBConfiguration File Options\f1 for
+more information.
+.PP
+\fBmongoldap\f1\f1 uses any configuration options related to \fBLDAP Proxy Authentication\f1
+or \fBLDAP Authorization\f1 for testing LDAP authentication or
+authorization.
+.PP
+Requires specifying \fB\-\-user\f1\f1\&. May accept \fB\-\-password\f1\f1 for
+testing LDAP authentication.
+.PP
+Ensure the configuration file uses ASCII encoding. The \fBmongoldap\f1\f1
+instance does not support configuration files with non\-ASCII encoding,
+including UTF\-8.
+.RE
+.PP
+\fBmongoldap \-\-user\f1
+.RS
+.PP
+Username for \fBmongoldap\f1\f1 to use when attempting LDAP authentication or
+authorization.
+.RE
+.PP
+\fBmongoldap \-\-password\f1
+.RS
+.PP
+Password of the \fB\-\-user\f1\f1 for
+\fBmongoldap\f1\f1 to use when attempting LDAP authentication. Not
+required for LDAP authorization.
+.RE
+.PP
+\fBmongoldap \-\-ldapServers\f1
+.RS
+.PP
+The LDAP server against which the \fBmongoldap\f1\f1 authenticates users or
+determines what actions a user is authorized to perform on a given
+database. If the LDAP server specified has any replicated instances,
+you may specify the host and port of each replicated server in a
+comma\-delimited list.
+.PP
+If your LDAP infrastructure partitions the LDAP directory over multiple LDAP
+servers, specify \fIone\f1 LDAP server or any of its replicated instances to
+\fB\-\-ldapServers\f1\f1\&. MongoDB supports following LDAP referrals as defined in RFC 4511
+4.1.10 (https://www.rfc\-editor.org/rfc/rfc4511.txt)\&. Do not use \fB\-\-ldapServers\f1\f1
+for listing every LDAP server in your infrastructure.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using
+\fBsetParameter\f1\f1\&.
+.PP
+If unset, \fBmongoldap\f1\f1 cannot use \fBLDAP authentication or authorization\f1\&.
+.RE
+.PP
+\fBmongoldap \-\-ldapQueryUser\f1
+.RS
+.PP
+The identity with which \fBmongoldap\f1\f1 binds as, when connecting to or
+performing queries on an LDAP server.
+.PP
+Only required if any of the following are true:
+.RS
+.IP \(bu 2
+Using \fBLDAP authorization\f1\&.
+.IP \(bu 2
+Using an LDAP query for \fBusername transformation\f1\f1\&.
+.IP \(bu 2
+The LDAP server disallows anonymous binds
+.RE
+.PP
+You must use \fB\-\-ldapQueryUser\f1\f1 with \fB\-\-ldapQueryPassword\f1\f1\&.
+.PP
+If unset, \fBmongoldap\f1\f1 will not attempt to bind to the LDAP server.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using
+\fBsetParameter\f1\f1\&.
+.PP
+Windows MongoDB deployments can use \fB\-\-ldapBindWithOSDefaults\f1\f1
+instead of \fB\-\-ldapQueryUser\f1\f1 and \fB\-\-ldapQueryPassword\f1\f1\&. You cannot specify
+both \fB\-\-ldapQueryUser\f1\f1 and \fB\-\-ldapBindWithOSDefaults\f1\f1 at the same time.
+.RE
+.PP
+\fBmongoldap \-\-ldapQueryPassword\f1
+.RS
+.PP
+The password used to bind to an LDAP server when using
+\fB\-\-ldapQueryUser\f1\f1\&. You must use \fB\-\-ldapQueryPassword\f1\f1 with
+\fB\-\-ldapQueryUser\f1\f1\&.
+.PP
+If unset, \fBmongoldap\f1\f1 will not attempt to bind to the LDAP server.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using
+\fBsetParameter\f1\f1\&.
+.PP
+Windows MongoDB deployments can use \fB\-\-ldapBindWithOSDefaults\f1\f1
+instead of \fB\-\-ldapQueryPassword\f1\f1 and \fB\-\-ldapQueryPassword\f1\f1\&. You cannot specify
+both \fB\-\-ldapQueryPassword\f1\f1 and \fB\-\-ldapBindWithOSDefaults\f1\f1 at the same time.
+.RE
+.PP
+\fBmongoldap \-\-ldapBindWithOSDefaults\f1
+.RS
+.PP
+\fIDefault\f1: false
+.PP
+Available in MongoDB Enterprise for the Windows platform only.
+.PP
+Allows \fBmongoldap\f1\f1 to authenticate, or bind, using your Windows login
+credentials when connecting to the LDAP server.
+.PP
+Only required if:
+.RS
+.IP \(bu 2
+Using \fBLDAP authorization\f1\&.
+.IP \(bu 2
+Using an LDAP query for \fBusername transformation\f1\f1\&.
+.IP \(bu 2
+The LDAP server disallows anonymous binds
+.RE
+.PP
+Use \fB\-\-ldapBindWithOSDefaults\f1\f1 to replace \fB\-\-ldapQueryUser\f1\f1 and
+\fB\-\-ldapQueryPassword\f1\f1\&.
+.RE
+.PP
+\fBmongoldap \-\-ldapBindMethod\f1
+.RS
+.PP
+\fIDefault\f1: simple
+.PP
+The method \fBmongoldap\f1\f1 uses to authenticate to an LDAP
+server. Use with \fB\-\-ldapQueryUser\f1\f1 and \fB\-\-ldapQueryPassword\f1\f1 to connect to the LDAP server.
+.PP
+\fB\-\-ldapBindMethod\f1\f1 supports
+the following values:
+.RS
+.IP \(bu 2
+.RS
+.IP \(bu 4
+Value
+.IP \(bu 4
+Description
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fBsimple\f1
+.IP \(bu 4
+\fBmongoldap\f1\f1 uses simple authentication.
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fBsasl\f1
+.IP \(bu 4
+\fBmongoldap\f1\f1 uses SASL protocol for authentication.
+.RE
+.RE
+.PP
+If you specify \fBsasl\f1, you can configure the available SASL mechanisms
+using \fB\-\-ldapBindSaslMechanisms\f1\f1\&. \fBmongoldap\f1\f1 defaults to
+using \fBDIGEST\-MD5\f1 mechanism.
+.RE
+.PP
+\fBmongoldap \-\-ldapBindSaslMechanisms\f1
+.RS
+.PP
+\fIDefault\f1: DIGEST\-MD5
+.PP
+A comma\-separated list of SASL mechanisms \fBmongoldap\f1\f1 can
+use when authenticating to the LDAP server. The \fBmongoldap\f1\f1 and the
+LDAP server must agree on at least one mechanism. The \fBmongoldap\f1\f1
+dynamically loads any SASL mechanism libraries installed on the host
+machine at runtime.
+.PP
+Install and configure the appropriate libraries for the selected
+SASL mechanism(s) on both the \fBmongoldap\f1\f1 host and the remote
+LDAP server host. Your operating system may include certain SASL
+libraries by default. Defer to the documentation associated with each
+SASL mechanism for guidance on installation and configuration.
+.PP
+If using the \fBGSSAPI\f1 SASL mechanism for use with
+\fBKerberos Authentication\f1, verify the following for the
+\fBmongoldap\f1\f1 host machine:
+.PP
+\fBLinux\f1\f1
+.RS
+.RS
+.IP \(bu 2
+The \fBKRB5_CLIENT_KTNAME\f1 environment
+variable resolves to the name of the client \fBLinux Keytab Files\f1
+for the host machine. For more on Kerberos environment
+variables, please defer to the
+Kerberos documentation (https://web.mit.edu/kerberos/krb5\-1.13/doc/admin/env_variables.html)\&.
+.IP \(bu 2
+The client keytab includes a
+\fBUser Principal\f1 for the \fBmongoldap\f1\f1 to use when
+connecting to the LDAP server and execute LDAP queries.
+.RE
+.RE
+.PP
+\fBWindows\f1\f1
+.RS
+.PP
+If connecting to an Active Directory server, the Windows
+Kerberos configuration automatically generates a
+Ticket\-Granting\-Ticket (https://msdn.microsoft.com/en\-us/library/windows/desktop/aa380510(v=vs.85).aspx)
+when the user logs onto the system. Set \fB\-\-ldapBindWithOSDefaults\f1\f1 to
+\fBtrue\f1 to allow \fBmongoldap\f1\f1 to use the generated credentials when
+connecting to the Active Directory server and execute queries.
+.RE
+.PP
+Set \fB\-\-ldapBindMethod\f1\f1 to \fBsasl\f1 to use this option.
+.PP
+For a complete list of SASL mechanisms see the
+IANA listing (http://www.iana.org/assignments/sasl\-mechanisms/sasl\-mechanisms.xhtml)\&.
+Defer to the documentation for your LDAP or Active Directory
+service for identifying the SASL mechanisms compatible with the
+service.
+.PP
+MongoDB is not a source of SASL mechanism libraries, nor
+is the MongoDB documentation a definitive source for
+installing or configuring any given SASL mechanism. For
+documentation and support, defer to the SASL mechanism
+library vendor or owner.
+.PP
+For more information on SASL, defer to the following resources:
+.RS
+.IP \(bu 2
+For Linux, please see the Cyrus SASL documentation (https://www.cyrusimap.org/sasl/)\&.
+.IP \(bu 2
+For Windows, please see the Windows SASL documentation (https://msdn.microsoft.com/en\-us/library/cc223500.aspx)\&.
+.RE
+.RE
+.PP
+\fBmongoldap \-\-ldapTransportSecurity\f1
+.RS
+.PP
+\fIDefault\f1: tls
+.PP
+By default, \fBmongoldap\f1\f1 creates a TLS/SSL secured connection to the LDAP
+server.
+.PP
+For Linux deployments, you must configure the appropriate TLS Options in
+\fB/etc/openldap/ldap.conf\f1 file. Your operating system\(aqs package manager
+creates this file as part of the MongoDB Enterprise installation, via the
+\fBlibldap\f1 dependency. See the documentation for \fBTLS Options\f1 in the
+ldap.conf OpenLDAP documentation (http://www.openldap.org/software/man.cgi?query=ldap.conf&manpath=OpenLDAP+2.4\-Release)
+for more complete instructions.
+.PP
+For Windows deployment, you must add the LDAP server CA certificates to the
+Windows certificate management tool. The exact name and functionality of the
+tool may vary depending on operating system version. Please see the
+documentation for your version of Windows for more information on
+certificate management.
+.PP
+Set \fB\-\-ldapTransportSecurity\f1\f1 to \fBnone\f1 to disable TLS/SSL between \fBmongoldap\f1\f1 and the LDAP
+server.
+.PP
+Setting \fB\-\-ldapTransportSecurity\f1\f1 to \fBnone\f1 transmits plaintext information and possibly
+credentials between \fBmongoldap\f1\f1 and the LDAP server.
+.RE
+.PP
+\fBmongoldap \-\-ldapTimeoutMS\f1
+.RS
+.PP
+\fIDefault\f1: 10000
+.PP
+The amount of time in milliseconds \fBmongoldap\f1\f1 should wait for an LDAP server
+to respond to a request.
+.PP
+Increasing the value of \fB\-\-ldapTimeoutMS\f1\f1 may prevent connection failure between the
+MongoDB server and the LDAP server, if the source of the failure is a
+connection timeout. Decreasing the value of \fB\-\-ldapTimeoutMS\f1\f1 reduces the time
+MongoDB waits for a response from the LDAP server.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using
+\fBsetParameter\f1\f1\&.
+.RE
+.PP
+\fBmongoldap \-\-ldapUserToDNMapping\f1
+.RS
+.PP
+Maps the username provided to \fBmongoldap\f1\f1 for authentication to a LDAP
+Distinguished Name (DN). You may need to use \fB\-\-ldapUserToDNMapping\f1\f1 to transform a
+username into an LDAP DN in the following scenarios:
+.RS
+.IP \(bu 2
+Performing LDAP authentication with simple LDAP binding, where users
+authenticate to MongoDB with usernames that are not full LDAP DNs.
+.IP \(bu 2
+Using an \fBLDAP authorization query template\f1\f1 that requires a DN.
+.IP \(bu 2
+Transforming the usernames of clients authenticating to Mongo DB using
+different authentication mechanisms (e.g. x.509, kerberos) to a full LDAP
+DN for authorization.
+.RE
+.PP
+\fB\-\-ldapUserToDNMapping\f1\f1 expects a quote\-enclosed JSON\-string representing an ordered array
+of documents. Each document contains a regular expression \fBmatch\f1 and
+either a \fBsubstitution\f1 or \fBldapQuery\f1 template used for transforming the
+incoming username.
+.PP
+Each document in the array has the following form:
+.PP
+.EX
+  {
+    match: "<regex>"
+    substitution: "<LDAP DN>" | ldapQuery: "<LDAP Query>"
+  }
+.EE
+.RS
+.IP \(bu 2
+.RS
+.IP \(bu 4
+Field
+.IP \(bu 4
+Description
+.IP \(bu 4
+Example
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fBmatch\f1
+.IP \(bu 4
+An ECMAScript\-formatted regular expression (regex) to match against a
+provided username. Each parenthesis\-enclosed section represents a
+regex capture group used by \fBsubstitution\f1 or \fBldapQuery\f1\&.
+.IP \(bu 4
+\fB"(.+)ENGINEERING"\f1
+\fB"(.+)DBA"\f1
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fBsubstitution\f1
+.IP \(bu 4
+An LDAP distinguished name (DN) formatting template that converts the
+authentication name matched by the \fBmatch\f1 regex into a LDAP DN.
+Each curly bracket\-enclosed numeric value is replaced by the
+corresponding regex capture group (http://www.regular\-expressions.info/refcapture.html) extracted
+from the authentication username via the \fBmatch\f1 regex.
+.IP
+The result of the substitution must be an RFC4514 (https://www.ietf.org/rfc/rfc4514.txt) escaped string.
+.IP \(bu 4
+\fB"cn={0},ou=engineering,
+dc=example,dc=com"\f1
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fBldapQuery\f1
+.IP \(bu 4
+A LDAP query formatting template that inserts the authentication
+name matched by the \fBmatch\f1 regex into an LDAP query URI encoded
+respecting RFC4515 and RFC4516. Each curly bracket\-enclosed numeric
+value is replaced by the corresponding regex capture group (http://www.regular\-expressions.info/refcapture.html) extracted
+from the authentication username via the \fBmatch\f1 expression.
+\fBmongoldap\f1\f1 executes the query against the LDAP server to retrieve
+the LDAP DN for the authenticated user. \fBmongoldap\f1\f1 requires
+exactly one returned result for the transformation to be
+successful, or \fBmongoldap\f1\f1 skips this transformation.
+.IP \(bu 4
+\fB"ou=engineering,dc=example,
+dc=com??one?(user={0})"\f1
+.RE
+.RE
+.PP
+An explanation of  RFC4514 (https://www.ietf.org/rfc/rfc4514.txt),
+RFC4515 (https://tools.ietf.org/search/rfc4515),
+RFC4516 (https://tools.ietf.org/html/rfc4516), or LDAP queries is out
+of scope for the MongoDB Documentation. Please review the RFC directly or
+use your preferred LDAP resource.
+.PP
+For each document in the array, you must use either \fBsubstitution\f1 or
+\fBldapQuery\f1\&. You \fIcannot\f1 specify both in the same document.
+.PP
+When performing authentication or authorization, \fBmongoldap\f1\f1 steps through
+each document in the array in the given order, checking the authentication
+username against the \fBmatch\f1 filter.  If a match is found,
+\fBmongoldap\f1\f1 applies the transformation and uses the output for
+authenticating the user. \fBmongoldap\f1\f1 does not check the remaining documents
+in the array.
+.PP
+If the given document does not match the provided authentication
+name, \fBmongoldap\f1\f1 continues through the list of documents
+to find additional matches. If no matches are found in any document,
+or the transformation the document describes fails,
+\fBmongoldap\f1\f1 returns an error.
+.PP
+Starting in MongoDB 4.4, \fBmongoldap\f1\f1 also returns an error
+if one of the transformations cannot be evaluated due to networking
+or authentication failures to the LDAP server. \fBmongoldap\f1\f1
+rejects the connection request and does not check the remaining
+documents in the array.
+.PP
+Starting in MongoDB 5.0, \fB\-\-ldapUserToDNMapping\f1\f1
+accepts an empty string \fB""\f1 or empty array \fB[ ]\f1 in place of a
+mapping documnent. If providing an empty string or empty array to
+\fB\-\-ldapUserToDNMapping\f1\f1, MongoDB will map the
+authenticated username as the LDAP DN. Previously, providing an
+empty mapping document would cause mapping to fail.
+.PP
+The following shows two transformation documents. The first
+document matches against any string ending in \fB@ENGINEERING\f1, placing
+anything preceeding the suffix into a regex capture group. The
+second document matches against any string ending in \fB@DBA\f1, placing
+anything preceeding the suffix into a regex capture group.
+.PP
+.EX
+  "[
+     {
+        match: "(.+)@ENGINEERING.EXAMPLE.COM",
+        substitution: "cn={0},ou=engineering,dc=example,dc=com"
+     },
+     {
+        match: "(.+)@DBA.EXAMPLE.COM",
+        ldapQuery: "ou=dba,dc=example,dc=com??one?(user={0})"
+  
+     }
+  
+  ]"
+.EE
+.PP
+A user with username \fBalice@ENGINEERING.EXAMPLE.COM\f1 matches the first
+document. The regex capture group \fB{0}\f1 corresponds to the string
+\fBalice\f1\&. The resulting output is the DN
+\fB"cn=alice,ou=engineering,dc=example,dc=com"\f1\&.
+.PP
+A user with username \fBbob@DBA.EXAMPLE.COM\f1 matches the second document.
+The regex capture group \fB{0}\f1 corresponds to the string \fBbob\f1\&.  The
+resulting output is the LDAP query
+\fB"ou=dba,dc=example,dc=com??one?(user=bob)"\f1\&. \fBmongoldap\f1\f1 executes this
+query against the LDAP server, returning the result
+\fB"cn=bob,ou=dba,dc=example,dc=com"\f1\&.
+.PP
+If \fB\-\-ldapUserToDNMapping\f1\f1 is unset, \fBmongoldap\f1\f1 applies no transformations to the username
+when attempting to authenticate or authorize a user against the LDAP server.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using the
+\fBsetParameter\f1\f1 database command.
+.RE
+.PP
+\fBmongoldap \-\-ldapAuthzQueryTemplate\f1
+.RS
+.PP
+A relative LDAP query URL formatted conforming to RFC4515 (https://tools.ietf.org/search/rfc4515) and RFC4516 (https://tools.ietf.org/html/rfc4516) that \fBmongoldap\f1\f1 executes to obtain
+the LDAP groups to which the authenticated user belongs to. The query is
+relative to the host or hosts specified in \fB\-\-ldapServers\f1\f1\&.
+.PP
+In the URL, you can use the following substituion tokens:
+.RS
+.IP \(bu 2
+.RS
+.IP \(bu 4
+Substitution Token
+.IP \(bu 4
+Description
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fB{USER}\f1
+.IP \(bu 4
+Substitutes the authenticated username, or the
+\fBtransformed\f1\f1
+username if a \fBusername mapping\f1\f1 is specified.
+.RE
+.IP \(bu 2
+.RS
+.IP \(bu 4
+\fB{PROVIDED_USER}\f1
+.IP \(bu 4
+Substitutes the supplied username, i.e. before either
+authentication or \fBLDAP transformation\f1\f1\&.
+.RE
+.RE
+.PP
+When constructing the query URL, ensure that the order of LDAP parameters
+respects RFC4516:
+.PP
+.EX
+  [ dn  [ ? [attributes] [ ? [scope] [ ? [filter] [ ? [Extensions] ] ] ] ] ]
+.EE
+.PP
+If your query includes an attribute, \fBmongoldap\f1\f1 assumes that the query
+retrieves a the DNs which this entity is member of.
+.PP
+If your query does not include an attribute, \fBmongoldap\f1\f1 assumes
+the query retrieves all entities which the user is member of.
+.PP
+For each LDAP DN returned by the query, \fBmongoldap\f1\f1 assigns the authorized
+user a corresponding role on the \fBadmin\f1 database. If a role on the on the
+\fBadmin\f1 database exactly matches the DN, \fBmongoldap\f1\f1 grants the user the
+roles and privileges assigned to that role. See the
+\fBdb.createRole()\f1\f1 method for more information on creating roles.
+.PP
+This LDAP query returns any groups listed in the LDAP user object\(aqs
+\fBmemberOf\f1 attribute.
+.PP
+.EX
+  "{USER}?memberOf?base"
+.EE
+.PP
+Your LDAP configuration may not include the \fBmemberOf\f1 attribute as part
+of the user schema, may possess a different attribute for reporting group
+membership, or may not track group membership through attributes.
+Configure your query with respect to your own unique LDAP configuration.
+.PP
+If unset, \fBmongoldap\f1\f1 cannot authorize users using LDAP.
+.PP
+This setting can be configured on a running \fBmongoldap\f1\f1 using the
+\fBsetParameter\f1\f1 database command.
+.PP
+An explanation of RFC4515 (https://tools.ietf.org/search/rfc4515),
+RFC4516 (https://tools.ietf.org/html/rfc4516) or LDAP queries is out
+of scope for the MongoDB Documentation. Please review the RFC directly or
+use your preferred LDAP resource.
+.RE

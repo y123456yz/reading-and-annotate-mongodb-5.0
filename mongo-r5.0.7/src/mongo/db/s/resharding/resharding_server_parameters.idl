@@ -1,0 +1,177 @@
+# Copyright (C) 2020-present MongoDB, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the Server Side Public License, version 1,
+# as published by MongoDB, Inc.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Server Side Public License for more details.
+#
+# You should have received a copy of the Server Side Public License
+# along with this program. If not, see
+# <http://www.mongodb.com/licensing/server-side-public-license>.
+#
+# As a special exception, the copyright holders give permission to link the
+# code of portions of this program with the OpenSSL library under certain
+# conditions as described in each individual source file and distribute
+# linked combinations including the program with the OpenSSL library. You
+# must comply with the Server Side Public License in all respects for
+# all of the code used other than as permitted herein. If you modify file(s)
+# with this exception, you may extend this exception to your version of the
+# file(s), but you are not obligated to do so. If you do not wish to do so,
+# delete this exception statement from your version. If you delete this
+# exception statement from all source files in the program, then also delete
+# it in the license file.
+#
+
+# Server parameters for resharding.
+
+global:
+    cpp_namespace: "mongo::resharding"
+
+imports:
+    - "mongo/idl/basic_types.idl"
+
+server_parameters:
+    reshardingCoordinatorServiceMaxThreadCount:
+        description: The max number of threads in the resharding coordinator's thread pool.
+        set_at: startup
+        cpp_vartype: int
+        cpp_varname: gReshardingCoordinatorServiceMaxThreadCount
+        default: 3
+        validator:
+            gte: 1
+            lte: 256
+
+    reshardingDonorServiceMaxThreadCount:
+        description: The max number of threads in the resharding donor's thread pool.
+        set_at: startup
+        cpp_vartype: int
+        cpp_varname: gReshardingDonorServiceMaxThreadCount
+        default: 2
+        validator:
+            gte: 1
+            lte: 256
+
+    reshardingRecipientServiceMaxThreadCount:
+        description: The max number of threads in the resharding recipient's thread pool.
+        set_at: startup
+        cpp_vartype: int
+        cpp_varname: gReshardingRecipientServiceMaxThreadCount
+        default: 8
+        validator:
+            gte: 1
+            lte: 256
+
+    reshardingCollectionClonerBatchSizeInBytes:
+        description: >-
+            Limit for the number of bytes of data inserted per storage transaction (WriteUnitOfWork)
+            by ReshardingCollectionCloner.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingCollectionClonerBatchSizeInBytes
+        default:
+            expr: 100 * 1024
+        validator:
+            gte: 1
+
+    reshardingTxnClonerProgressBatchSize:
+        description: >-
+            Number of config.transactions records from a donor shard to process before recording the
+            lsid locally to resume from on primary failover or server restart.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingTxnClonerProgressBatchSize
+        default: 1000
+        validator:
+            gte: 1
+
+    reshardingOplogBatchTaskCount:
+        description: >-
+            The number of subtasks to divide a single oplog batch into so that it may be applied
+            concurrently by different threads.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingOplogBatchTaskCount
+        default:
+            expr: (gReshardingRecipientServiceMaxThreadCount + 1) / 2
+            is_constexpr: false
+        validator:
+            gte: 1
+            lte: 256
+
+    reshardingOplogBatchLimitOperations:
+        description: >-
+            The maximum number of operations for ReshardingOplogApplier to apply in a single batch.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingOplogBatchLimitOperations
+        default:
+            expr: 5 * 1000
+        validator:
+            gte: 1
+            lte:
+                expr: 1000 * 1000
+
+    reshardingOplogBatchLimitBytes:
+        description: >-
+            The maximum size in bytes for ReshardingOplogApplier to apply in a single batch.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingOplogBatchLimitBytes
+        default:
+            expr: 100 * 1024 * 1024
+        validator:
+            gte:
+                expr: 16 * 1024 * 1024
+            lte:
+                expr: 100 * 1024 * 1024
+
+    reshardingOplogApplierMaxLockRequestTimeoutMillis:
+        description: >-
+            The max number of milliseconds that the resharding oplog applier will wait for lock
+            acquisition.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingOplogApplierMaxLockRequestTimeoutMillis
+        default: 5
+
+    reshardingMinimumOperationDurationMillis:
+        description: >-
+            Controls the minimum duration of resharding operations, and allows transactions and 
+            retryable writes started after the current resharding operation to complete within the 
+            period defined by the parameter.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingMinimumOperationDurationMillis
+        default:
+            expr: 5 * 60 * 1000
+        validator:
+            gte: 0
+    
+    reshardingCriticalSectionTimeoutMillis:
+        description: >-
+            The upper limit on how long to wait to hear back from recipient shards reaching strict
+            consistency after engaging the critical section.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gReshardingCriticalSectionTimeoutMillis
+        default:
+            expr: 5 * 1000
+        validator:
+            gte: 0
+
+    remainingReshardingOperationTimeThresholdMillis:
+        description: >-
+            Controls the threshold for engaging the critical section of resharding operations. 
+            Once the remaining operation time on all recipients falls below this threshold, the 
+            resharding coordinator will engage the critical section and block incoming writes.
+        set_at: [startup, runtime]
+        cpp_vartype: AtomicWord<int>
+        cpp_varname: gRemainingReshardingOperationTimeThresholdMillis
+        default:
+            expr: 2 * 1000
+        validator:
+            gte: 0

@@ -1,0 +1,76 @@
+# Copyright (C) 2020-present MongoDB, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the Server Side Public License, version 1,
+# as published by MongoDB, Inc.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Server Side Public License for more details.
+#
+# You should have received a copy of the Server Side Public License
+# along with this program. If not, see
+# <http://www.mongodb.com/licensing/server-side-public-license>.
+#
+# As a special exception, the copyright holders give permission to link the
+# code of portions of this program with the OpenSSL library under certain
+# conditions as described in each individual source file and distribute
+# linked combinations including the program with the OpenSSL library. You
+# must comply with the Server Side Public License in all respects for
+# all of the code used other than as permitted herein. If you modify file(s)
+# with this exception, you may extend this exception to your version of the
+# file(s), but you are not obligated to do so. If you do not wish to do so,
+# delete this exception statement from your version. If you delete this
+# exception statement from all source files in the program, then also delete
+# it in the license file.
+#
+
+# This file defines the format of documents stored in config.localReshardingOperations.donor on the
+# donor shard for a resharding operation.
+# When a new top level field is added to the donor document, add the same field as a member of
+# resharding_donor_service.
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/s/resharding/common_types.idl"
+
+structs:
+    ReshardingDonorMetrics:
+        description: "Contains metrics about the resharding operation on a donor."
+        strict: false
+        fields:
+            operationRuntime:
+                    type: ReshardingMetricsTimeInterval
+                    description: >-
+                        The time interval of the entire resharding operation on this donor.
+                    optional: true
+            criticalSection:
+                type: ReshardingMetricsTimeInterval
+                description: >-
+                    The time interval of the resharding critical section on this donor.
+                optional: true
+
+    ReshardingDonorDocument:
+        description: "Represents a resharding operation on the donor shard."
+        inline_chained_structs: true
+        chained_structs:
+            CommonReshardingMetadata: CommonReshardingMetadata
+        generate_comparison_operators: false
+        # Use strict:false to avoid complications around upgrade/downgrade. This isn't technically
+        # required for resharding because durable state from all resharding operations is cleaned up
+        # before the upgrade or downgrade can complete.
+        strict: false
+        fields:
+            # We intentionally have the mutable state nested in a subobject to make it easy to
+            # overwrite with a single $set.
+            mutableState: DonorShardContext
+            recipientShards:
+                type: array<shard_id>
+                description: "The list of recipient shards that are replicating from this donor."
+            metrics:
+                type: ReshardingDonorMetrics
+                description: "Metrics related to this donor."
+                optional: true

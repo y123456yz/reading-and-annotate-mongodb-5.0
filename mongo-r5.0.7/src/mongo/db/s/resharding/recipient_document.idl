@@ -1,0 +1,88 @@
+# Copyright (C) 2020-present MongoDB, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the Server Side Public License, version 1,
+# as published by MongoDB, Inc.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Server Side Public License for more details.
+#
+# You should have received a copy of the Server Side Public License
+# along with this program. If not, see
+# <http://www.mongodb.com/licensing/server-side-public-license>.
+#
+# As a special exception, the copyright holders give permission to link the
+# code of portions of this program with the OpenSSL library under certain
+# conditions as described in each individual source file and distribute
+# linked combinations including the program with the OpenSSL library. You
+# must comply with the Server Side Public License in all respects for
+# all of the code used other than as permitted herein. If you modify file(s)
+# with this exception, you may extend this exception to your version of the
+# file(s), but you are not obligated to do so. If you do not wish to do so,
+# delete this exception statement from your version. If you delete this
+# exception statement from all source files in the program, then also delete
+# it in the license file.
+#
+
+# This file defines the format of documents stored in config.localReshardingOperations.recipient on
+# the recipient shard for a resharding operation.
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/s/resharding/common_types.idl"
+
+structs:
+    ReshardingRecipientMetrics:
+        description: "Contains metrics about the resharding operation on a recipient."
+        strict: false
+        fields:
+            operationRuntime:
+                type: ReshardingMetricsTimeInterval
+                description: >-
+                    The time interval of the entire resharding operation on this recipient.
+                optional: true
+            documentCopy:
+                type: ReshardingMetricsTimeInterval
+                description: >-
+                    The time interval that it takes to clone documents on this recipient.
+                optional: true
+            oplogApplication:
+                type: ReshardingMetricsTimeInterval
+                description: >-
+                    The time interval that it takes to apply oplog entries on this recipient.
+                optional: true
+
+    ReshardingRecipientDocument:
+        description: "Represents a resharding operation on the recipient shard."
+        inline_chained_structs: true
+        chained_structs:
+            CommonReshardingMetadata: CommonReshardingMetadata
+        generate_comparison_operators: false
+        # Use strict:false to avoid complications around upgrade/downgrade. This isn't technically
+        # required for resharding because durable state from all resharding operations is cleaned up
+        # before the upgrade or downgrade can complete.
+        strict: false
+        fields:
+            cloneTimestamp:
+                type: timestamp
+                optional: true
+                description:  "The timestamp for the snapshot read while cloning from the donors."
+            # We intentionally have the mutable state nested in a subobject to make it easy to
+            # overwrite with a single $set.
+            mutableState: RecipientShardContext
+            donorShards:
+                type: array<DonorShardFetchTimestamp>
+                description: "The list of donor shards that report to this recipient."
+            minimumOperationDurationMillis:
+                type: long
+            startConfigTxnCloneTime:
+                type:  date
+                optional: true
+            metrics:
+                type: ReshardingRecipientMetrics
+                description: "Metrics related to this recipient."
+                optional: true

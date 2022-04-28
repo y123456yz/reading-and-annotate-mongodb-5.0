@@ -1,0 +1,84 @@
+# Copyright (C) 2020-present MongoDB, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the Server Side Public License, version 1,
+# as published by MongoDB, Inc.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Server Side Public License for more details.
+#
+# You should have received a copy of the Server Side Public License
+# along with this program. If not, see
+# <http://www.mongodb.com/licensing/server-side-public-license>.
+#
+# As a special exception, the copyright holders give permission to link the
+# code of portions of this program with the OpenSSL library under certain
+# conditions as described in each individual source file and distribute
+# linked combinations including the program with the OpenSSL library. You
+# must comply with the Server Side Public License in all respects for
+# all of the code used other than as permitted herein. If you modify file(s)
+# with this exception, you may extend this exception to your version of the
+# file(s), but you are not obligated to do so. If you do not wish to do so,
+# delete this exception statement from your version. If you delete this
+# exception statement from all source files in the program, then also delete
+# it in the license file.
+#
+
+global:
+  cpp_namespace: "mongo"
+  cpp_includes:
+    - "mongo/db/commands/feature_compatibility_version_parser.h"
+
+imports:
+    - "mongo/idl/basic_types.idl"
+
+enums:
+    SetFCVPhase:
+        description: "Enum that defines the phases of the 2-phase setFCV protocol."
+        type: string
+        values:
+            kStart: "start"
+            kComplete: "complete"
+
+commands:
+    setFeatureCompatibilityVersion:
+        description: "Parser for the 'setFeatureCompatibilityVersion' command."
+        command_name: setFeatureCompatibilityVersion
+        cpp_name: SetFeatureCompatibilityVersion
+        strict: true
+        namespace: type
+        api_version: ""
+        type: fcv_string
+        fields:
+            downgradeOnDiskChanges:
+                description: "A boolean that indicates whether we should rollback all possible
+                              on-disk changes associated with the upgraded
+                              featureCompatibilityVersion. This should only be called with a
+                              downgraded featureCompatibilityVersion."
+                type: safeBool
+                optional: true
+            fromConfigServer:
+                description: "A boolean that indicates whether the command is being requested by a
+                              config server. Normally FCV upgrades between last-lts and anything
+                              less than latest are not allowed, but in a sharded cluster, newly
+                              started shard nodes start in lastLTS and this parameter is required in
+                              order to be able to add such a shard to a cluster, which is currently
+                              running at last-continuous."
+                type: safeBool
+                optional: true
+            phase:
+                description: "An enum that indicates whether the the command is requesting the shard
+                              to enter phase-1 (kStart) or phase-2 (kComplete) of the 2-phase setFCV
+                              protocol. Only valid to be specified for shards. If not specified on a
+                              shard, it will run the full setFCV sequence (both phases)."
+                type: SetFCVPhase
+                optional: true
+            changeTimestamp:
+                description: "Timestamp used to identify the 2-phase setFCV request. Both phases
+                              (kStart and kComplete) must have the same timestamp for the entire
+                              sequence, and every new sequence started must strictly have
+                              incrementing timestamp."
+                type: timestamp
+                optional: true
