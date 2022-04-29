@@ -58,7 +58,7 @@ class Grid {
 public:
     Grid();
     ~Grid();
-
+    //Grid._shardingInitialized全局变量
     using CustomConnectionPoolStatsFn = std::function<void(executor::ConnectionPoolStats* stats)>;
 
     /**

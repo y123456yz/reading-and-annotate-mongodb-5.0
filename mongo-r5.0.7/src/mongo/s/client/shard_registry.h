@@ -160,7 +160,7 @@ private:
  * functionality to run commands against shards. All commands which this registry executes are
  * retried on NotPrimary class of errors and in addition all read commands are retried on network
  * errors automatically as well.
- */
+ */ //Grid._shardRegistry全局变量
 class ShardRegistry {
     ShardRegistry(const ShardRegistry&) = delete;
     ShardRegistry& operator=(const ShardRegistry&) = delete;

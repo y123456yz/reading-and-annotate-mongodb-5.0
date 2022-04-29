@@ -253,6 +253,7 @@ Status waitForShardRegistryReload(OperationContext* opCtx) {
     return {ErrorCodes::ShutdownInProgress, "aborting shard loading attempt"};
 }
 
+//mongos重启获取路由信息
 Status preCacheMongosRoutingInfo(OperationContext* opCtx) {
     if (!gLoadRoutingTableOnStartup) {
         return Status::OK();

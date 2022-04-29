@@ -204,7 +204,7 @@ private:
 
 /**
  * Contains settings, which control the behaviour of the balancer.
- */
+ */ //Grid._balancerConfig全局变量
 class BalancerConfiguration {
     BalancerConfiguration(const BalancerConfiguration&) = delete;
     BalancerConfiguration& operator=(const BalancerConfiguration&) = delete;

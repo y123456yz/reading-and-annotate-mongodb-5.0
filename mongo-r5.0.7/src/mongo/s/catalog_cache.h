@@ -73,6 +73,7 @@ private:
  * in the sense that it only reads from the persistent store, but never writes to it. Instead
  * writes happen through the ShardingCatalogManager and the cache hierarchy needs to be invalidated.
  */
+//Grid._catalogCache全局变量//Grid._catalogCache全局变量
 class CatalogCache {
     CatalogCache(const CatalogCache&) = delete;
     CatalogCache& operator=(const CatalogCache&) = delete;
@@ -233,6 +234,7 @@ private:
         Mutex _mutex = MONGO_MAKE_LATCH("DatabaseCache::_mutex");
     };
 
+    //CatalogCache._collectionCache成员  CatalogCache::CatalogCache构造使用
     class CollectionCache : public RoutingTableHistoryCache {
     public:
         CollectionCache(ServiceContext* service,
@@ -284,13 +286,15 @@ private:
                                                          bool allowLocks = false);
 
     // Interface from which chunks will be retrieved
+    //cfg对应ConfigServerCatalogCacheLoader，mongod对应ConfigServerCatalogCacheLoader(mongod实例)
+    //mongos对应ConfigServerCatalogCacheLoader 
     CatalogCacheLoader& _cacheLoader;
 
     // Executor on which the caches below will execute their blocking work
     std::shared_ptr<ThreadPool> _executor;
-
+    //cache中的DB信息
     DatabaseCache _databaseCache;
-
+    //cache中的collection信息
     CollectionCache _collectionCache;
 
     /**

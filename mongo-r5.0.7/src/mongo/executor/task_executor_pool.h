@@ -47,7 +47,7 @@ namespace executor {
  *
  * Initialization and shutdown methods are not thread-safe, but getArbitraryExecutor() may be called
  * concurrently by multiple threads.
- */
+ */ //Grid._executorPool全局变量
 class TaskExecutorPool final {
 public:
     /**

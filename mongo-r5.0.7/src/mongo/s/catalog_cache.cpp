@@ -92,6 +92,8 @@ DatabaseVersion CachedDatabaseInfo::databaseVersion() const {
     return _dbt->getVersion();
 }
 
+//cfg对应ConfigServerCatalogCacheLoader，mongod对应ConfigServerCatalogCacheLoader(mongod实例)
+//mongos对应ConfigServerCatalogCacheLoader 
 CatalogCache::CatalogCache(ServiceContext* const service, CatalogCacheLoader& cacheLoader)
     : _cacheLoader(cacheLoader),
       _executor(std::make_shared<ThreadPool>([] {
@@ -171,7 +173,12 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
             ? CacheCausalConsistency::kLatestCached
             : CacheCausalConsistency::kLatestKnown;
 
-        auto collEntryFuture = _collectionCache.acquireAsync(nss, cacheConsistency);
+	    //cfg对应ConfigServerCatalogCacheLoader，mongod对应ShardServerCatalogCacheLoader(mongod实例)
+   	    //mongos对应ConfigServerCatalogCacheLoader 
+
+		//mongod ShardServerCatalogCacheLoader::acquireAsync,  mongos ConfigServerCatalogCacheLoader::acquireAsync
+		//ReadThroughCacheBase::_asyncWork
+		auto collEntryFuture = _collectionCache.acquireAsync(nss, cacheConsistency);
 
         if (allowLocks) {
             // When allowLocks is true we may be holding a lock, so we don't
@@ -199,7 +206,9 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
 
         while (true) {
             try {
+				//等待获取路由结束
                 auto collEntry = collEntryFuture.get(opCtx);
+				//刷路由的总时间
                 _stats.totalRefreshWaitTimeMicros.addAndFetch(t.micros());
 
                 setOperationShouldBlockBehindCatalogCacheRefresh(opCtx, false);
@@ -375,13 +384,17 @@ void CatalogCache::purgeAllDatabases() {
     _collectionCache.invalidateAll();
 }
 
+
 void CatalogCache::report(BSONObjBuilder* builder) const {
     BSONObjBuilder cacheStatsBuilder(builder->subobjStart("catalogCache"));
 
+	
     const size_t numDatabaseEntries = _databaseCache.getCacheInfo().size();
     const size_t numCollectionEntries = _collectionCache.getCacheInfo().size();
 
+	//cache中的DB数
     cacheStatsBuilder.append("numDatabaseEntries", static_cast<long long>(numDatabaseEntries));
+	//cache中的collection总数
     cacheStatsBuilder.append("numCollectionEntries", static_cast<long long>(numCollectionEntries));
 
     _stats.report(&cacheStatsBuilder);
@@ -560,12 +573,15 @@ void CatalogCache::CollectionCache::Stats::report(BSONObjBuilder* builder) const
     builder->append("countFailedRefreshes", countFailedRefreshes.load());
 }
 
+//CatalogCache::CollectionCache::CollectionCache
+//从config获取cache.chunks.xx表获取路由数据
 CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_lookupCollection(
     OperationContext* opCtx,
     const NamespaceString& nss,
     const RoutingTableHistoryValueHandle& existingHistory,
     const ComparableChunkVersion& previousVersion) {
     const bool isIncremental(existingHistory && existingHistory->optRt);
+	//refresh计数
     _updateRefreshesStats(isIncremental, true);
     blockCollectionCacheLookup.pauseWhileSet(opCtx);
 

@@ -69,7 +69,7 @@ class StatusWith;
  * with the kill*() suite of methods.
  *
  * No public methods throw exceptions, and all public methods are thread-safe.
- */
+ */ //Grid._cursorManager全局变量
 class ClusterCursorManager {
     ClusterCursorManager(const ClusterCursorManager&) = delete;
     ClusterCursorManager& operator=(const ClusterCursorManager&) = delete;

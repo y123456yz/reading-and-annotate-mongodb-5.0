@@ -457,6 +457,7 @@ Status initializeSharding(OperationContext* opCtx) {
         return status;
     }
 
+	//从config server获取路由信息
     status = preCacheMongosRoutingInfo(opCtx);
     if (!status.isOK()) {
         return status;
@@ -581,6 +582,7 @@ private:
         uassertStatusOK(schedStatus);
     }
 
+	//_scheduleUpdateConfigServer
     void _updateConfigServer(Status status, std::string setName, ConnectionString update) {
         if (ErrorCodes::isCancellationError(status.code())) {
             stdx::lock_guard lock(_mutex);

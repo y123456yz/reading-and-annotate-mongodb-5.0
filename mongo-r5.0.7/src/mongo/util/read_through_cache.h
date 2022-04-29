@@ -114,7 +114,7 @@ struct ReadThroughCacheLookup<Result, Key, Value, CacheNotCausallyConsistent> {
  *
  * Causal consistency is provided by requiring the backing store to asociate every Value it returns
  * with a logical timestamp of type Time.
- */
+ */ //²Î¿¼RoutingTableHistoryCache
 template <typename Key, typename Value, typename Time = CacheNotCausallyConsistent>
 class ReadThroughCache : public ReadThroughCacheBase {
     /**

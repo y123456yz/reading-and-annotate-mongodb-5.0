@@ -558,6 +558,7 @@ std::vector<CollectionType> ShardingCatalogClientImpl::getCollections(
     auto collDocs = uassertStatusOK(_exhaustiveFindOnConfig(opCtx,
                                                             kConfigReadSelector,
                                                             readConcernLevel,
+                                                            //config.collections
                                                             CollectionType::ConfigNS,
                                                             b.obj(),
                                                             BSONObj(),
