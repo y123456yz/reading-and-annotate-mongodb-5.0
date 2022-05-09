@@ -69,6 +69,7 @@ void ReadThroughCacheBase::CancelToken::tryCancel() {
     }
 }
 
+//CatalogCache::CatalogCache中会初始化线程池
 ReadThroughCacheBase::CancelToken ReadThroughCacheBase::_asyncWork(
     WorkWithOpContext work) noexcept {
     auto taskInfo = std::make_shared<CancelToken::TaskInfo>(_serviceContext, _cancelTokenMutex);

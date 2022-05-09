@@ -45,6 +45,9 @@ namespace mongo {
  * See the comments for CollectionShardingState for more information on how this class fits in the
  * sharding architecture.
  */
+//
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
+//每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
 class CollectionShardingRuntime final : public CollectionShardingState,
                                         public Decorable<CollectionShardingRuntime> {
     CollectionShardingRuntime(const CollectionShardingRuntime&) = delete;
@@ -261,6 +264,7 @@ private:
     //
     // If the collection is unsharded, the metadata has not been set yet, or the metadata has been
     // specifically reset by calling clearFilteringMetadata(), this will be nullptr;
+    //每个表的meta元数据，包括历史版本通过_metadataManager管理
     std::shared_ptr<MetadataManager> _metadataManager;
 
     // Used for testing to check the number of times a new MetadataManager has been installed.

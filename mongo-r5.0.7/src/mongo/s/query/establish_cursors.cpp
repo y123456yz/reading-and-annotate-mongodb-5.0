@@ -192,12 +192,15 @@ void CursorEstablisher::waitForResponse() noexcept {
     }
 }
 
+//establishCursors
 void CursorEstablisher::checkForFailedRequests() {
     if (!_maybeFailure) {
         // If we saw no failures, there is nothing to do.
         return;
     }
 
+	//例如mongos版本比mongod低，则会有如下打印:
+	//{"t":{"$date":"2022-05-03T20:05:45.217+08:00"},"s":"I",  "c":"QUERY",    "id":4625501, "ctx":"conn72","msg":"Unable to establish remote cursors","attr":{"error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived":{"$timestamp":{"t":29,"i":21080}},"vReceivedEpoch":{"$oid":"626a663821072b82d9059209"},"vReceivedTimestamp":{"$timestamp":{"t":1651140151,"i":6}},"vWanted":{"$timestamp":{"t":30,"i":15108}},"vWantedEpoch":{"$oid":"626a663821072b82d9059209"},"vWantedTimestamp":{"$timestamp":{"t":1651140151,"i":6}},"shardId":"mongodb_5.0_shard1"},"nRemotes":0}}
     LOGV2(4625501,
           "Unable to establish remote cursors",
           "error"_attr = *_maybeFailure,

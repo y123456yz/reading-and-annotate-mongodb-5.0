@@ -136,6 +136,8 @@ bool joinShardVersionOperation(OperationContext* opCtx,
 
 }  // namespace
 
+//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
+//  ->recoverRefreshShardVersion
 SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext,
                                                   const NamespaceString nss,
                                                   bool runRecover) {
@@ -169,6 +171,7 @@ SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext
                 auto* const csr = CollectionShardingRuntime::get(opCtx, nss);
 
                 if (currentMetadataToInstall) {
+					//CollectionShardingRuntime::setFilteringMetadata
                     csr->setFilteringMetadata(opCtx, *currentMetadataToInstall);
                 } else {
                     // If currentMetadataToInstall is uninitialized, an error occurred in the
@@ -190,6 +193,7 @@ SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext
 
             auto currentMetadata = forceGetCurrentMetadata(opCtx, nss);
 
+			//resharding情况进入
             if (currentMetadata.isSharded()) {
                 // If the collection metadata after a refresh has 'reshardingFields', then pass it
                 // to the resharding subsystem to process.
@@ -208,6 +212,10 @@ SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext
         .share();
 }
 
+//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+
+////ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
 void onShardVersionMismatch(OperationContext* opCtx,
                             const NamespaceString& nss,
                             boost::optional<ChunkVersion> shardVersionReceived) {
@@ -375,6 +383,9 @@ void ScopedShardVersionCriticalSection::_cleanup() {
     csr->exitCriticalSection(csrLock, _reason);
 }
 
+
+//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 Status onShardVersionMismatchNoExcept(OperationContext* opCtx,
                                       const NamespaceString& nss,
                                       boost::optional<ChunkVersion> shardVersionReceived) noexcept {
@@ -391,6 +402,10 @@ Status onShardVersionMismatchNoExcept(OperationContext* opCtx,
     }
 }
 
+//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
+//  ->recoverRefreshShardVersion
+
+//recoverRefreshShardVersion
 CollectionMetadata forceGetCurrentMetadata(OperationContext* opCtx, const NamespaceString& nss) {
     invariant(!opCtx->lockState()->isLocked());
     invariant(!opCtx->getClient()->isInDirectClient());
@@ -520,7 +535,10 @@ ChunkVersion forceShardFilteringMetadataRefresh(OperationContext* opCtx,
     csr->setFilteringMetadata(opCtx, std::move(metadata));
     return newShardVersion;
 }
+//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 
+//ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 Status onDbVersionMismatchNoExcept(
     OperationContext* opCtx,
     const StringData dbName,
@@ -539,6 +557,7 @@ Status onDbVersionMismatchNoExcept(
     }
 }
 
+//onDbVersionMismatch   FlushDatabaseCacheUpdatesCmdBase
 void forceDatabaseRefresh(OperationContext* opCtx, const StringData dbName) {
     invariant(!opCtx->lockState()->isLocked());
     invariant(!opCtx->getClient()->isInDirectClient());

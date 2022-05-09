@@ -114,7 +114,10 @@ struct ReadThroughCacheLookup<Result, Key, Value, CacheNotCausallyConsistent> {
  *
  * Causal consistency is provided by requiring the backing store to asociate every Value it returns
  * with a logical timestamp of type Time.
- */ //参考RoutingTableHistoryCache
+ */ //参考RoutingTableHistoryCache  DatabaseTypeCache
+
+//CatalogCache::CollectionCache::CollectionCache中构造
+//CatalogCache::DatabaseCache::DatabaseCache中构造
 template <typename Key, typename Value, typename Time = CacheNotCausallyConsistent>
 class ReadThroughCache : public ReadThroughCacheBase {
     /**
@@ -249,7 +252,7 @@ public:
      * NOTES:
      *  The returned value may be invalid by the time the caller gets to access it, if 'invalidate'
      *  is called for 'key'.
-     */
+     */ //CatalogCache::_getCollectionRoutingInfoAt  
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>&& std::is_constructible_v<Key, KeyType>)
     SharedSemiFuture<ValueHandle> acquireAsync(

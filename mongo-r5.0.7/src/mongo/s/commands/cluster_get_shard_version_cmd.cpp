@@ -43,7 +43,7 @@
 
 namespace mongo {
 namespace {
-
+	//db.runCommand({getShardVersion: "wukong.actions", fullMetadata: false});注意可能部分mongo shell默认是true，会全量打印每条chunk路由，会影响性能
 class GetShardVersion : public BasicCommand {
 public:
     GetShardVersion() : BasicCommand("getShardVersion", "getshardversion") {}

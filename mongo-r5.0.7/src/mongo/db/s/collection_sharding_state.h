@@ -56,6 +56,12 @@ namespace mongo {
  * lock on the respective collection. Different functions require different lock levels though, so
  * be sure to check the function-level comments for details.
  */
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
+//每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
+
+ 
+//每个表对应一个CollectionShardingState，所有表最终存入CollectionShardingStateMap
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
 class CollectionShardingState {
 public:
     CollectionShardingState() = default;

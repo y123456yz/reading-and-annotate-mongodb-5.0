@@ -82,7 +82,7 @@ inline constexpr bool isCausallyConsistent = isCausallyConsistentImpl<T>::value;
 /**
  * Specifies the desired causal consistency for calls to 'get' (and 'acquire', respectively in the
  * ReadThroughCache, which is its main consumer).
- */
+ */ //ÉúÐ§½¨InvalidatingLRUCache
 enum class CacheCausalConsistency {
     // Provides the fastest acquire semantics, where if the cache already contains a
     // (non-invalidated) value cached, it will be immediately returned. Otherwise, the 'acquire'

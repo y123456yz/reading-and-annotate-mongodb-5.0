@@ -171,6 +171,8 @@ int MetadataManager::numberOfEmptyMetadataSnapshots() const {
     return emptyMetadataSnapshots;
 }
 
+//CollectionShardingRuntime::setFilteringMetadata
+//最新的版本添加到_metadata队列，老的从_metadata清除
 void MetadataManager::setFilteringMetadata(CollectionMetadata remoteMetadata) {
     stdx::lock_guard<Latch> lg(_managerLock);
     invariant(!_metadata.empty());
@@ -207,14 +209,23 @@ void MetadataManager::setFilteringMetadata(CollectionMetadata remoteMetadata) {
           "activeMetadata"_attr = activeMetadata.toStringBasic(),
           "remoteMetadata"_attr = remoteMetadata.toStringBasic());
 
+	//存入MetadataManager._metadata该链表中
+	//最新的版本添加到_metadata队列，老的从_metadata清除
     _setActiveMetadata(lg, std::move(remoteMetadata));
 }
 
+
+////最新的版本添加到_metadata队列，老的从_metadata清除
+//MetadataManager::setFilteringMetadata
 void MetadataManager::_setActiveMetadata(WithLock wl, CollectionMetadata newMetadata) {
+	//MetadataManager._metadata存入该链表中
     _metadata.emplace_back(std::make_shared<CollectionMetadataTracker>(std::move(newMetadata)));
+	//把老的meta去掉
     _retireExpiredMetadata(wl);
 }
 
+//清除老的meta 
+//MetadataManager::_setActiveMetadata
 void MetadataManager::_retireExpiredMetadata(WithLock) {
     // Remove entries with a usage count of 0 from the front of _metadata, which may schedule
     // orphans for deletion. We cannot remove an entry from the middle of _metadata because a

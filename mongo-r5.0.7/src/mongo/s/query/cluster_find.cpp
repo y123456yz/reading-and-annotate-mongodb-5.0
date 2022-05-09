@@ -489,8 +489,9 @@ Status setUpOperationContextStateForGetMore(OperationContext* opCtx,
 
 }  // namespace
 
+//注意这里为啥不用kMaxNumStaleVersionRetries
 const size_t ClusterFind::kMaxRetries = 10;
-
+//兼容低版本的协议
 CursorId ClusterFind::runQuery(OperationContext* opCtx,
                                const CanonicalQuery& query,
                                const ReadPreferenceSetting& readPref,

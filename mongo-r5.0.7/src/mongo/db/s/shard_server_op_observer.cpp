@@ -81,6 +81,7 @@ public:
     CollectionVersionLogOpHandler(OperationContext* opCtx, const NamespaceString& nss)
         : _opCtx(opCtx), _nss(nss) {}
 
+	//CollectionVersionLogOpHandler::commit
     void commit(boost::optional<Timestamp>) override {
         invariant(_opCtx->lockState()->isCollectionLockedForMode(_nss, MODE_IX));
 
@@ -337,14 +338,19 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateE
             return NamespaceString(coll);
         }());
 
+		
         auto enterCriticalSectionFieldNewVal = update_oplog_entry::extractNewValueForField(
+        			   //"enterCriticalSectionCounter"
             updateDoc, ShardCollectionType::kEnterCriticalSectionCounterFieldName);
         auto refreshingFieldNewVal = update_oplog_entry::extractNewValueForField(
+			//"refreshing"
             updateDoc, ShardCollectionType::kRefreshingFieldName);
 
         // Need the WUOW to retain the lock for CollectionVersionLogOpHandler::commit().
         AutoGetCollection autoColl(opCtx, updatedNss, MODE_IX);
+		//db.cache.collections表对应oplog如果包含这些字段，从节点则需要清理meta，从新获取最新的
         if (refreshingFieldNewVal.isBoolean() && !refreshingFieldNewVal.boolean()) {
+			//这里注册事件，主节点版本信息发生变化后，通过oplog通知从节点通过CollectionShardingRuntime::clearFilteringMetadata清除meta catalog元数据
             opCtx->recoveryUnit()->registerChange(
                 std::make_unique<CollectionVersionLogOpHandler>(opCtx, updatedNss));
         }
@@ -353,6 +359,7 @@ void ShardServerOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateE
             // Force subsequent uses of the namespace to refresh the filtering metadata so they
             // can synchronize with any work happening on the primary (e.g., migration critical
             // section).
+            //清除本地缓存的meta
             CollectionShardingRuntime::get(opCtx, updatedNss)->clearFilteringMetadata(opCtx);
         }
     }

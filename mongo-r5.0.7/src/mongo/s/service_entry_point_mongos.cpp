@@ -271,7 +271,7 @@ void HandleRequest::onSuccess(const DbResponse& dbResponse) {
     CurOp::get(opCtx)->completeAndLogOperation(
         opCtx, logv2::LogComponent::kCommand, dbResponse.response.size(), slowMsOverride);
 }
-
+//mongos服务入口ServiceEntryPointMongos::handleRequest调用
 Future<DbResponse> HandleRequest::run() {
     auto fp = makePromiseFuture<void>();
     auto future = std::move(fp.future)
@@ -282,14 +282,17 @@ Future<DbResponse> HandleRequest::run() {
                       })
                       .tapError([](Status status) {
                           LOGV2(4879803, "Failed to handle request", "error"_attr = redact(status));
-                      });
+                      });     
     fp.promise.emplaceValue();
     return future;
 }
 
+
+//mongos服务入口ServiceEntryPointMongos::handleRequest    mongod服务入口ServiceEntryPointMongod::handleRequest
 Future<DbResponse> ServiceEntryPointMongos::handleRequest(OperationContext* opCtx,
                                                           const Message& message) noexcept {
     auto hr = std::make_shared<HandleRequest>(opCtx, message);
+	//HandleRequest::run
     return hr->run();
 }
 

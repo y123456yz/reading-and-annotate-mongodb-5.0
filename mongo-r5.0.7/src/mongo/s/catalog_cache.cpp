@@ -69,6 +69,7 @@ const int kCollectionCacheSize = 10000;
 const OperationContext::Decoration<bool> operationShouldBlockBehindCatalogCacheRefresh =
     OperationContext::declareDecoration<bool>();
 
+//因为CatalogCache::_getCollectionRoutingInfoAt获取表路由信息引起阻塞
 const OperationContext::Decoration<bool> operationBlockedBehindCatalogCacheRefresh =
     OperationContext::declareDecoration<bool>();
 
@@ -92,9 +93,10 @@ DatabaseVersion CachedDatabaseInfo::databaseVersion() const {
     return _dbt->getVersion();
 }
 
-//cfg对应ConfigServerCatalogCacheLoader，mongod对应ConfigServerCatalogCacheLoader(mongod实例)
-//mongos对应ConfigServerCatalogCacheLoader 
+////Grid._catalogCache全局变量
 CatalogCache::CatalogCache(ServiceContext* const service, CatalogCacheLoader& cacheLoader)
+	 //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+	//mongos config-server都对应ConfigServerCatalogCacheLoader	mongod都对应 ShardServerCatalogCacheLoader
     : _cacheLoader(cacheLoader),
       _executor(std::make_shared<ThreadPool>([] {
           ThreadPool::Options options;
@@ -103,7 +105,9 @@ CatalogCache::CatalogCache(ServiceContext* const service, CatalogCacheLoader& ca
           options.maxThreads = 6;
           return options;
       }())),
+      //CatalogCache::DatabaseCache::DatabaseCache
       _databaseCache(service, *_executor, _cacheLoader),
+      //CatalogCache::CollectionCache::CollectionCache  
       _collectionCache(service, *_executor, _cacheLoader) {
     _executor->startup();
 }
@@ -116,6 +120,8 @@ CatalogCache::~CatalogCache() {
     _executor->join();
 }
 
+//checkCollectionOptions createDatabase createCollection  GetShardVersion::run MoveDatabasePrimaryCommand::run
+//CatalogCache::_getCollectionRoutingInfoAt  CatalogCache::getDatabaseWithRefresh
 StatusWith<CachedDatabaseInfo> CatalogCache::getDatabase(OperationContext* opCtx,
                                                          StringData dbName,
                                                          bool allowLocks) {
@@ -128,6 +134,8 @@ StatusWith<CachedDatabaseInfo> CatalogCache::getDatabase(OperationContext* opCtx
     }
 
     try {
+		//ReadThroughCache::acquire
+		//获取该DB的cache信息
         auto dbEntry = _databaseCache.acquire(opCtx, dbName, CacheCausalConsistency::kLatestKnown);
         uassert(ErrorCodes::NamespaceNotFound,
                 str::stream() << "database " << dbName << " not found",
@@ -138,6 +146,7 @@ StatusWith<CachedDatabaseInfo> CatalogCache::getDatabase(OperationContext* opCtx
         return ex.toStatus();
     }
 }
+
 
 StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
     OperationContext* opCtx,
@@ -263,6 +272,17 @@ StatusWith<CachedDatabaseInfo> CatalogCache::getDatabaseWithRefresh(OperationCon
     return getDatabase(opCtx, dbName);
 }
 
+
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
+//每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
+
+
+//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
+//  ->recoverRefreshShardVersion->forceGetCurrentMetadata
+
+//mongos如果收到mongod的errName:StaleConfig异常，会调用ClusterFind::runQuery->getCollectionRoutingInfoWithRefresh   
+//   ParseAndRunCommand::RunAndRetry::_checkRetryForTransaction重新获取路由转发
+//forceGetCurrentMetadata
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfoWithRefresh(
     OperationContext* opCtx, const NamespaceString& nss) {
     _collectionCache.advanceTimeInStore(
@@ -302,8 +322,10 @@ void CatalogCache::onStaleDatabaseVersion(const StringData dbName,
                                   "Registering new database version",
                                   "db"_attr = dbName,
                                   "version"_attr = version.toBSONForLogging());
+		//ReadThroughCache::advanceTimeInStore
         _databaseCache.advanceTimeInStore(dbName, version);
     } else {
+    	//ReadThroughCache::invalidate->InvalidatingLRUCache::invalidate
         _databaseCache.invalidate(dbName);
     }
 }
@@ -401,6 +423,7 @@ void CatalogCache::report(BSONObjBuilder* builder) const {
     _collectionCache.reportStats(&cacheStatsBuilder);
 }
 
+//该
 void CatalogCache::checkAndRecordOperationBlockedByRefresh(OperationContext* opCtx,
                                                            mongo::LogicalOp opType) {
     if (!isMongos() || !operationBlockedBehindCatalogCacheRefresh(opCtx)) {
@@ -466,12 +489,15 @@ void CatalogCache::Stats::report(BSONObjBuilder* builder) const {
     }
 }
 
+//CatalogCache._databaseCache成员
+//CatalogCache::CatalogCache中构造   
 CatalogCache::DatabaseCache::DatabaseCache(ServiceContext* service,
                                            ThreadPoolInterface& threadPool,
                                            CatalogCacheLoader& catalogCacheLoader)
     : ReadThroughCache(_mutex,
                        service,
                        threadPool,
+                       //threadPool线程池中调度该函数运行
                        [this](OperationContext* opCtx,
                               const std::string& dbName,
                               const ValueHandle& db,
@@ -481,6 +507,7 @@ CatalogCache::DatabaseCache::DatabaseCache(ServiceContext* service,
                        kDatabaseCacheSize),
       _catalogCacheLoader(catalogCacheLoader) {}
 
+//通过db.adminCommand({"flushRouterConfig":1})清除本地缓存的所有库表路由信息，当访问mongos的时候就会走到这里
 CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDatabase(
     OperationContext* opCtx,
     const std::string& dbName,
@@ -502,6 +529,11 @@ CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDa
 
         newDbVersion.setDatabaseVersion(newDb.getVersion());
 
+		//日志如下:
+		//{"t":{"$date":"2022-05-03T20:02:29.106+08:00"},"s":"D1", "c":"SH_REFR",  "id":24101,   
+		//"ctx":"CatalogCache-346","msg":"Refreshed cached database entry","attr":{"db":"test","newDbVersion":
+		//{"dbVersion":{"uuid":{"$uuid":"f301fb98-ae1e-431b-b696-a6acbc306918"},"timestamp":{"$timestamp":{"t":1651067217,"i":5}},"lastMod":1},"uuidDisambiguatingSequenceNum":15,"forcedRefreshSequenceNum":1},
+		//"oldDbVersion":{"dbVersion":"None","uuidDisambiguatingSequenceNum":0,"forcedRefreshSequenceNum":0},"durationMillis":0}}
         LOGV2_FOR_CATALOG_REFRESH(24101,
                                   1,
                                   "Refreshed cached database entry",
@@ -524,12 +556,15 @@ CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDa
     }
 }
 
+//CatalogCache._collectionCache 
+//CatalogCache::CatalogCache中构造
 CatalogCache::CollectionCache::CollectionCache(ServiceContext* service,
                                                ThreadPoolInterface& threadPool,
                                                CatalogCacheLoader& catalogCacheLoader)
     : ReadThroughCache(_mutex,
                        service,
                        threadPool,
+                        //threadPool线程池中调度该函数运行
                        [this](OperationContext* opCtx,
                               const NamespaceString& nss,
                               const ValueHandle& collectionHistory,
@@ -573,8 +608,8 @@ void CatalogCache::CollectionCache::Stats::report(BSONObjBuilder* builder) const
     builder->append("countFailedRefreshes", countFailedRefreshes.load());
 }
 
-//CatalogCache::CollectionCache::CollectionCache
-//从config获取cache.chunks.xx表获取路由数据
+//CatalogCache::CollectionCache::CollectionCache  
+//从config获取cache.chunks.xx表获取路由数据  
 CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_lookupCollection(
     OperationContext* opCtx,
     const NamespaceString& nss,
@@ -601,8 +636,11 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                                   "lookupSinceVersion"_attr = lookupVersion,
                                   "timeInStore"_attr = previousVersion.toBSONForLogging());
 
+		 //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+ 	    //mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
+		//ShardServerCatalogCacheLoader::getChunksSince
         auto collectionAndChunks = _catalogCacheLoader.getChunksSince(nss, lookupVersion).get();
-
+                                  
         auto newRoutingHistory = [&] {
             // If we have routing info already and it's for the same collection epoch, we're
             // updating. Otherwise, we're making a whole new routing table.

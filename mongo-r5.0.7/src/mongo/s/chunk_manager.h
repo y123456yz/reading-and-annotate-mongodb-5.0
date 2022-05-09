@@ -487,7 +487,7 @@ struct OptionalRoutingTableHistory {
     boost::optional<RoutingTableHistory> optRt;
 };
 
-//CollectionCache¼Ì³Ð¸ÄÀÚ
+//CollectionCache¼Ì³Ð¸ÃÀà
 using RoutingTableHistoryCache =
     ReadThroughCache<NamespaceString, OptionalRoutingTableHistory, ComparableChunkVersion>;
 using RoutingTableHistoryValueHandle = RoutingTableHistoryCache::ValueHandle;

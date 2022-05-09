@@ -41,6 +41,10 @@
 namespace mongo {
 namespace {
 
+
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
+//每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
+
 class CollectionShardingStateMap {
     CollectionShardingStateMap(const CollectionShardingStateMap&) = delete;
     CollectionShardingStateMap& operator=(const CollectionShardingStateMap&) = delete;
@@ -125,6 +129,7 @@ const ServiceContext::Decoration<boost::optional<CollectionShardingStateMap>>
 
 }  // namespace
 
+//每个表对应一个CollectionShardingState，所有表最终存入CollectionShardingStateMap
 CollectionShardingState* CollectionShardingState::get(OperationContext* opCtx,
                                                       const NamespaceString& nss) {
     // Collection lock must be held to have a reference to the collection's sharding state

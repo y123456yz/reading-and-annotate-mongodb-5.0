@@ -117,6 +117,7 @@ BSONObj MongosProcessInterface::preparePipelineAndExplain(Pipeline* ownedPipelin
     return sharded_agg_helpers::targetShardsForExplain(ownedPipeline);
 }
 
+
 boost::optional<Document> MongosProcessInterface::lookupSingleDocument(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const NamespaceString& nss,

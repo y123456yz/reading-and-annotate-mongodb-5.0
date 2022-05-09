@@ -87,7 +87,9 @@ CollectionShardingRuntime::CollectionShardingRuntime(
 
 CollectionShardingRuntime* CollectionShardingRuntime::get(OperationContext* opCtx,
                                                           const NamespaceString& nss) {
+    //每个表对应一个CollectionShardingState，所有表最终存入CollectionShardingStateMap
     auto* const css = CollectionShardingState::get(opCtx, nss);
+	//CollectionShardingRuntime继承css
     return checked_cast<CollectionShardingRuntime*>(css);
 }
 
@@ -150,6 +152,7 @@ boost::optional<CollectionMetadata> CollectionShardingRuntime::getCurrentMetadat
     return optMetadata->get();
 }
 
+//checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow
 void CollectionShardingRuntime::checkShardVersionOrThrow(OperationContext* opCtx) {
     (void)_getMetadataWithVersionCheckAt(opCtx, boost::none);
 }
@@ -183,6 +186,8 @@ boost::optional<SharedSemiFuture<void>> CollectionShardingRuntime::getCriticalSe
     return _critSec.getSignal(op);
 }
 
+//recoverRefreshShardVersion
+//获取了新的路由元数据信息，则需要把最新的元数据信息刷新到_metadataManager
 void CollectionShardingRuntime::setFilteringMetadata(OperationContext* opCtx,
                                                      CollectionMetadata newMetadata) {
     invariant(!newMetadata.isSharded() || !_nss.isNamespaceAlwaysUnsharded(),
@@ -201,15 +206,22 @@ void CollectionShardingRuntime::setFilteringMetadata(OperationContext* opCtx,
         ++_numMetadataManagerChanges;
     } else if (!_metadataManager ||
                !newMetadata.uuidMatches(_metadataManager->getCollectionUuid())) {
+        //第一次获取到meta元数据
         _metadataType = MetadataType::kSharded;
         _metadataManager = std::make_shared<MetadataManager>(
             opCtx->getServiceContext(), _nss, _rangeDeleterExecutor, newMetadata);
         ++_numMetadataManagerChanges;
     } else {
+    	//MetadataManager::setFilteringMetadata  
+    	//最新的版本添加到_metadata队列，老的从_metadata清除
         _metadataManager->setFilteringMetadata(std::move(newMetadata));
     }
 }
 
+//recoverRefreshShardVersion
+//释放该表的metadata，内存中清理掉
+
+//CollectionVersionLogOpHandler::commit和ShardServerOpObserver::onUpdate会调用，主节点版本信息变化通过oplog通知从节点清理，然后从新获取最新的
 void CollectionShardingRuntime::clearFilteringMetadata(OperationContext* opCtx) {
     const auto csrLock = CSRLock::lockExclusive(opCtx, this);
     stdx::lock_guard lk(_metadataManagerLock);
@@ -309,6 +321,14 @@ CollectionShardingRuntime::_getCurrentMetadataIfKnown(
     MONGO_UNREACHABLE;
 }
 
+//"error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
+//checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow ()
+//版本检查，版本不一致则会携带"version mismatch detected for"，在外层的以下逻辑开始获取路由信息
+// 这个逻辑只会对小版本进行检查，如果大版本不一致，则在外层的下面的调用逻辑进行meta元数据刷新
+
+//请求得外层会判断上面的StaleConfig异常,然后重新从config获取最新的路由信息
+//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
+//  ->recoverRefreshShardVersion->forceGetCurrentMetadata
 std::shared_ptr<ScopedCollectionDescription::Impl>
 CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
     OperationContext* opCtx, const boost::optional<mongo::LogicalTime>& atClusterTime) {
@@ -372,6 +392,7 @@ CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
                                 << "but the client expects unsharded collection");
     }
 
+	//主版本不一致，则返回会携带该信息
     if (wantedShardVersion.majorVersion() != receivedShardVersion.majorVersion()) {
         // Could be > or < - wanted is > if this is the source of a migration, wanted < if this is
         // the target of a migration
@@ -397,7 +418,7 @@ size_t CollectionShardingRuntime::numberOfRangesScheduledForDeletion() const {
     return 0;
 }
 
-
+//onShardVersionMismatch 
 void CollectionShardingRuntime::setShardVersionRecoverRefreshFuture(SharedSemiFuture<void> future,
                                                                     const CSRLock&) {
     invariant(!_shardVersionInRecoverOrRefresh);

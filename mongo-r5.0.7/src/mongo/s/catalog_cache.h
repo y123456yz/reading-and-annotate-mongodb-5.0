@@ -41,6 +41,8 @@
 
 namespace mongo {
 
+//3.6默认重试5次，参考mongo::runCommand,
+//生效参考ParseAndRunCommand::RunAndRetry
 static constexpr int kMaxNumStaleVersionRetries = 10;
 
 using DatabaseTypeCache = ReadThroughCache<std::string, DatabaseType, ComparableDatabaseVersion>;
@@ -73,7 +75,14 @@ private:
  * in the sense that it only reads from the persistent store, but never writes to it. Instead
  * writes happen through the ShardingCatalogManager and the cache hierarchy needs to be invalidated.
  */
+ 
+//一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
+//每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
+ 
 //Grid._catalogCache全局变量//Grid._catalogCache全局变量
+//mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+//mongos  mongod都对应ConfigServerCatalogCacheLoader
+
 class CatalogCache {
     CatalogCache(const CatalogCache&) = delete;
     CatalogCache& operator=(const CatalogCache&) = delete;
@@ -286,8 +295,8 @@ private:
                                                          bool allowLocks = false);
 
     // Interface from which chunks will be retrieved
-    //cfg对应ConfigServerCatalogCacheLoader，mongod对应ConfigServerCatalogCacheLoader(mongod实例)
-    //mongos对应ConfigServerCatalogCacheLoader 
+    //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+    //mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
     CatalogCacheLoader& _cacheLoader;
 
     // Executor on which the caches below will execute their blocking work
@@ -295,7 +304,7 @@ private:
     //cache中的DB信息
     DatabaseCache _databaseCache;
     //cache中的collection信息
-    CollectionCache _collectionCache;
+    CollectionCache _collectionCache; 
 
     /**
      * Encapsulates runtime statistics across all databases and collections in this catalog cache

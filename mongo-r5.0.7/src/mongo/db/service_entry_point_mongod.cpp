@@ -230,13 +230,22 @@ public:
         }
     }
 
+	//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+
+	//GetDatabaseVersionCmd:run
+	//ExecCommandDatabase::_commandExec()->refreshDatabase
     bool refreshDatabase(OperationContext* opCtx, const StaleDbRoutingVersion& se) const
         noexcept override {
         return onDbVersionMismatchNoExcept(
                    opCtx, se.getDb(), se.getVersionReceived(), se.getVersionWanted())
             .isOK();
     }
+	//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 
+	//GetShardVersion:run
+	//ExecCommandDatabase::_commandExec()->refreshCollection
     bool refreshCollection(OperationContext* opCtx, const StaleConfigInfo& se) const
         noexcept override {
         return onShardVersionMismatchNoExcept(opCtx, se.getNss(), se.getVersionReceived()).isOK();
@@ -274,6 +283,7 @@ public:
     }
 };
 
+//mongos服务入口ServiceEntryPointMongos::handleRequest    mongod服务入口ServiceEntryPointMongod::handleRequest
 Future<DbResponse> ServiceEntryPointMongod::handleRequest(OperationContext* opCtx,
                                                           const Message& m) noexcept {
     return ServiceEntryPointCommon::handleRequest(opCtx, m, std::make_unique<Hooks>());

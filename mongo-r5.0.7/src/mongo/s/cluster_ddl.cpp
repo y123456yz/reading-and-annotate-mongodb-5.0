@@ -81,6 +81,7 @@ AsyncRequestsSender::Response executeCommandAgainstDatabasePrimaryOrFirstShard(
 
 }  // namespace
 
+
 CachedDatabaseInfo createDatabase(OperationContext* opCtx,
                                   StringData dbName,
                                   boost::optional<ShardId> suggestedPrimaryId) {
@@ -116,6 +117,7 @@ CachedDatabaseInfo createDatabase(OperationContext* opCtx,
 
     return uassertStatusOK(std::move(dbStatus));
 }
+
 
 void createCollection(OperationContext* opCtx, const ShardsvrCreateCollection& request) {
     const auto& nss = request.getNamespace();

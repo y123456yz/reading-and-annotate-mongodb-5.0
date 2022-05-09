@@ -49,6 +49,8 @@ class RangePreserver;
 /**
  * Contains filtering metadata for a sharded collection.
  */
+//CollectionShardingRuntime::_metadataManager为该结构，记录所有表的路由信息
+//一个表的meta元数据，包括历史版本通过MetadataManager管理，管理一个表的metadata
 class MetadataManager : public std::enable_shared_from_this<MetadataManager> {
 public:
     MetadataManager(ServiceContext* serviceContext,
@@ -248,6 +250,7 @@ private:
     // chronological order based on the refreshes that occurred. The entry at _metadata.back() is
     // the most recent metadata and is what is returned to new queries. The rest are previously
     // active collection metadata instances still in use by active server operations or cursors.
+    //每个分片表的路由chunk信息存入该链表中
     std::list<std::shared_ptr<CollectionMetadataTracker>> _metadata;
 
     // Ranges being deleted, or scheduled to be deleted, by a background task.

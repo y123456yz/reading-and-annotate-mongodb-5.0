@@ -1,0 +1,2 @@
+python3 buildscripts/scons.py install-mongod -j 2 MONGO_VERSION=5.0.7
+

@@ -745,6 +745,8 @@ Status ParseAndRunCommand::RunInvocation::_setup() {
         // in-place reference to the object on the operation context, which may be
         // concurrently used elsewhere (eg. read by currentOp).
         stdx::lock_guard<Client> lk(*opCtx->getClient());
+		//mongo shell访问mongos，mongos会自动带上"readConcern":{"level":"local"}
+		//{"t":{"$date":"2022-05-03T19:34:40.847+08:00"},"s":"D2", "c":"SHARDING", "id":22767,   "ctx":"conn72","msg":"Applying default readConcern on command","attr":{"command":"find","readConcern":{"readConcern":{"level":"local"}}}}
         LOGV2_DEBUG(22767,
                     2,
                     "Applying default readConcern on {command} of {readConcern}",

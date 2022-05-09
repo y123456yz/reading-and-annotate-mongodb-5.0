@@ -47,8 +47,10 @@ namespace mongo {
 /**
  * Interface through which the sharding catalog cache requests the set of changed chunks to be
  * retrieved from the persisted metadata store.
- */
-class CatalogCacheLoader {
+ */ //ConfigServerCatalogCacheLoader继承该类
+ //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+ //mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
+class CatalogCacheLoader { 
 public:
     virtual ~CatalogCacheLoader() = default;
 

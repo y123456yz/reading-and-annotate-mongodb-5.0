@@ -59,6 +59,7 @@ Grid* Grid::get(OperationContext* operationContext) {
     return get(operationContext->getServiceContext());
 }
 
+//initializeGlobalShardingState
 void Grid::init(std::unique_ptr<ShardingCatalogClient> catalogClient,
                 std::unique_ptr<CatalogCache> catalogCache,
                 std::unique_ptr<ShardRegistry> shardRegistry,

@@ -403,6 +403,7 @@ Status initializeSharding(OperationContext* opCtx) {
     auto shardFactory =
         std::make_unique<ShardFactory>(std::move(buildersMap), std::move(targeterFactory));
 
+	//×¢²áConfigServerCatalogCacheLoader
     CatalogCacheLoader::set(opCtx->getServiceContext(),
                             std::make_unique<ConfigServerCatalogCacheLoader>());
 

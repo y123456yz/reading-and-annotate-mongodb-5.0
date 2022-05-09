@@ -45,7 +45,10 @@ namespace mongo {
  * one (e.g, we're splitting in a given collection.).
  *
  * This class's chunk mapping is immutable once constructed.
- */
+ */ 
+//表的chunk元数据信息存到该结构中，一个表对应一个该结构，一一对应
+//最终所有表的路由信息存入MetadataManager._metadata该链表中
+//CollectionShardingRuntime::setFilteringMetadata让CollectionMetadata和MetadataManager关联起来
 class CollectionMetadata {
 public:
     /**

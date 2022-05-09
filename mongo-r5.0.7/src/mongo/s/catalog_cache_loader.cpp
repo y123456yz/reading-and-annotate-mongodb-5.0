@@ -63,6 +63,7 @@ CatalogCacheLoader::CollectionAndChangedChunks::CollectionAndChangedChunks(
       allowMigrations(allowMigrations),
       changedChunks(std::move(chunks)) {}
 
+//mongos×¢²á²Î¿¼initializeSharding   mongod×¢²á²Î¿¼initializeGlobalShardingStateForMongoD
 void CatalogCacheLoader::set(ServiceContext* serviceContext,
                              std::unique_ptr<CatalogCacheLoader> loader) {
     auto& catalogCacheLoader = catalogCacheLoaderDecoration(serviceContext);

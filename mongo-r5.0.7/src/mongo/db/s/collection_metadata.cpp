@@ -144,6 +144,7 @@ BSONObj CollectionMetadata::toBSON() const {
     return builder.obj();
 }
 
+//MetadataManager::setFilteringMetadata
 std::string CollectionMetadata::toStringBasic() const {
     if (isSharded()) {
         return str::stream() << "collection version: " << _cm->getVersion().toString()
