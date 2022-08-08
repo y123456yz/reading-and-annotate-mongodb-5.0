@@ -462,6 +462,7 @@ void ShardServerCatalogCacheLoader::shutDown() {
     _configServerLoader->shutDown();
 }
 
+//CatalogCache::CollectionCache::_lookupCollection
 SemiFuture<CollectionAndChangedChunks> ShardServerCatalogCacheLoader::getChunksSince(
     const NamespaceString& nss, ChunkVersion version) {
 
@@ -683,6 +684,8 @@ StatusWith<CollectionAndChangedChunks> ShardServerCatalogCacheLoader::_runSecond
         opCtx, nss, catalogCacheSinceVersion);
 }
 
+//ShardServerCatalogCacheLoader::getChunksSince
+//获取变化的chunks
 StatusWith<CollectionAndChangedChunks>
 ShardServerCatalogCacheLoader::_schedulePrimaryGetChunksSince(
     OperationContext* opCtx,
@@ -709,7 +712,9 @@ ShardServerCatalogCacheLoader::_schedulePrimaryGetChunksSince(
 
     // Refresh the loader's metadata from the config server. The caller's request will
     // then be serviced from the loader's up-to-date metadata.
+    //从config server获取最新变化了的chunks
     auto swCollectionAndChangedChunks =
+    	//ConfigServerCatalogCacheLoader::getChunksSince
         _configServerLoader->getChunksSince(nss, maxLoaderVersion).getNoThrow();
 
     if (swCollectionAndChangedChunks == ErrorCodes::NamespaceNotFound) {

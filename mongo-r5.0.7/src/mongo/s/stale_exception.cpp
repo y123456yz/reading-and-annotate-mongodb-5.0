@@ -43,6 +43,9 @@ MONGO_INIT_REGISTER_ERROR_EXTRA_INFO(StaleDbRoutingVersion);
 
 }  // namespace
 
+//shardversion对应异常见StaleConfigInfo，dbversion版本异常见StaleDbRoutingVersion
+//shard version版本检查见CollectionShardingRuntime::_getMetadataWithVersionCheckAt，db版本信息检查参考DatabaseShardingState::checkDbVersion  
+
 void StaleDbRoutingVersion::serialize(BSONObjBuilder* bob) const {
     bob->append("db", _db);
     bob->append("vReceived", _received.toBSON());

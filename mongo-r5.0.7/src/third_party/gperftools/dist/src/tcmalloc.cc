@@ -399,7 +399,7 @@ static double PagesToMiB(uint64_t pages) {
   return (pages << kPageShift) / 1048576.0;
 }
 
-// WRITE stats to "out"
+// WRITE stats to "out"   tcmalloc.cc中得DumpStats接口
 static void DumpStats(TCMalloc_Printer* out, int level) {
   TCMallocStats stats;
   uint64_t class_count[kClassSizesMax];

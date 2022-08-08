@@ -660,6 +660,7 @@ void ChunkManagerTargeter::noteStaleDbResponse(OperationContext* opCtx,
     _lastError = LastErrorType::kStaleDbVersion;
 }
 
+//BatchWriteExec::executeBatch
 bool ChunkManagerTargeter::refreshIfNeeded(OperationContext* opCtx) {
     // Did we have any stale config or targeting errors at all?
     if (!_lastError) {
@@ -677,6 +678,7 @@ bool ChunkManagerTargeter::refreshIfNeeded(OperationContext* opCtx) {
                 "staleDbVersion"_attr = _lastError.get() == LastErrorType::kStaleDbVersion);
 
     // Get the latest metadata information from the cache if there were issues
+    //上一次的cm
     auto lastManager = _cm;
     _cm = _init(opCtx, false);
     auto metadataChanged = isMetadataDifferent(lastManager, _cm);

@@ -476,6 +476,7 @@ private:
  * supports sharded collections (i.e., collections which have entries in config.collections and
  * config.chunks).
  */
+//CatalogCache::CollectionCache::_lookupCollection
 struct OptionalRoutingTableHistory {
     // UNSHARDED collection constructor
     OptionalRoutingTableHistory() = default;
@@ -490,6 +491,7 @@ struct OptionalRoutingTableHistory {
 //CollectionCache继承该类
 using RoutingTableHistoryCache =
     ReadThroughCache<NamespaceString, OptionalRoutingTableHistory, ComparableChunkVersion>;
+//ChunkManager._rt
 using RoutingTableHistoryValueHandle = RoutingTableHistoryCache::ValueHandle;
 
 /**
@@ -509,6 +511,10 @@ struct ShardEndpoint {
 /**
  * Wrapper around a RoutingTableHistory, which pins it to a particular point in time.
  */
+//MetadataManager::getActiveMetadata    assertIntersectingChunkHasNotMoved
+//CollectionMetadata._cm为该类型，一个表对应一个该结构，一一对应,最终所有表的路由信息存入MetadataManager._metadata该链表中,
+//  在CatalogCache::_getCollectionRoutingInfoAt中获取到最新路由信息后构造
+//ChunkManagerTargeter._cm为该类型，在ChunkManagerTargeter::refreshIfNeeded中获取最新路由
 class ChunkManager {
 public:
     ChunkManager(ShardId dbPrimary,
@@ -717,7 +723,7 @@ public:
 private:
     ShardId _dbPrimary;
     DatabaseVersion _dbVersion;
-
+    
     RoutingTableHistoryValueHandle _rt;
 
     boost::optional<Timestamp> _clusterTime;

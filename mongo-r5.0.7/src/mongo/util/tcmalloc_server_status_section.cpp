@@ -150,6 +150,7 @@ public:
 
 #if MONGO_HAVE_GPERFTOOLS_SIZE_CLASS_STATS
             if (verbosity >= 2) {
+				//启用db.runCommand( { setParameter: 1, diagnosticDataCollectionVerboseTCMalloc:true} )会输出
                 // Size class information
                 std::pair<BSONArrayBuilder, BSONArrayBuilder> builders(
                     builder.subarrayStart("size_classes"), BSONArrayBuilder());
@@ -163,8 +164,9 @@ public:
                 builder.append("page_heap", builders.second.arr());
             }
 #endif
-
+			
             char buffer[4096];
+			//tcmalloc.cc中得DumpStats接口
             MallocExtension::instance()->GetStats(buffer, sizeof buffer);
             builder.append("formattedString", buffer);
         }
@@ -182,6 +184,7 @@ private:
     }
 
 #if MONGO_HAVE_GPERFTOOLS_SIZE_CLASS_STATS
+	//启用db.runCommand( { setParameter: 1, diagnosticDataCollectionVerboseTCMalloc:true} )会输出
     static void appendSizeClassInfo(void* bsonarr_builder, const base::MallocSizeClass* stats) {
         BSONArrayBuilder& builder =
             reinterpret_cast<std::pair<BSONArrayBuilder, BSONArrayBuilder>*>(bsonarr_builder)

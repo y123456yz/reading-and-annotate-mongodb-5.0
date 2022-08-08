@@ -137,7 +137,7 @@ void createCollection(OperationContext* opCtx, const ShardsvrCreateCollection& r
 
     auto createCollResp = CreateCollectionResponse::parse(IDLParserErrorContext("createCollection"),
                                                           remoteResponse.data);
-
+	
     catalogCache->invalidateShardOrEntireCollectionEntryForShardedCollection(
         nss, createCollResp.getCollectionVersion(), dbInfo.primaryId());
 }

@@ -1658,6 +1658,23 @@ Future<void> ExecCommandDatabase::_commandExec() {
         }
     };
 
+	//mongod收到的mongos路由版本信息mongos<mongod: "error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
+	//checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow ()
+	//版本检查，版本不一致则会携带"version mismatch detected for"，在外层的以下逻辑开始获取路由信息
+	// 这个逻辑只会对小版本进行检查，如果大版本不一致，则在外层的下面的调用逻辑进行meta元数据刷新
+	
+	//请求得外层会判断上面的StaleConfig异常,然后重新从config获取最新的路由信息
+	//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
+	//	->recoverRefreshShardVersion->forceGetCurrentMetadata
+	
+	
+	//mongod收到的mongos路由版本信息mongos>mongod:	刷路由完成后，才进行对应请求
+	//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+
+
+	
+	//db版本信息检查参考DatabaseShardingState::checkDbVersion
     return runCommand()
         .onError<ErrorCodes::StaleDbVersion>([this](Status s) -> Future<void> {
             auto opCtx = _execContext->getOpCtx();
@@ -1681,6 +1698,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
 
             return s;
         })
+        //shard version版本检查相关异常
         .onErrorCategory<ErrorCategory::StaleShardVersionError>([this](Status s) -> Future<void> {
             auto opCtx = _execContext->getOpCtx();
 
@@ -2197,6 +2215,7 @@ DbResponse receivedGetMore(OperationContext* opCtx,
     return dbresponse;
 }
 
+//mongos的HandleRequest::handleRequest()调用，执行读请求回调
 struct CommandOpRunner : HandleRequest::OpRunner {
     using HandleRequest::OpRunner::OpRunner;
     Future<DbResponse> run() override {
@@ -2213,6 +2232,7 @@ struct SynchronousOpRunner : HandleRequest::OpRunner {
     }
 };
 
+//mongos的HandleRequest::handleRequest()调用，执行读请求回调
 struct QueryOpRunner : SynchronousOpRunner {
     using SynchronousOpRunner::SynchronousOpRunner;
     DbResponse runSync() override {
@@ -2302,6 +2322,7 @@ struct UnsupportedOpRunner : SynchronousOpRunner {
     }
 };
 
+//ServiceEntryPointCommon::handleRequest
 std::unique_ptr<HandleRequest::OpRunner> HandleRequest::makeOpRunner() {
     switch (executionContext->op()) {
         case dbQuery:
@@ -2434,6 +2455,7 @@ void onHandleRequestException(const Status& status) {
     LOGV2_ERROR(4879802, "Failed to handle request", "error"_attr = redact(status));
 }
 
+//mongos服务入口ServiceEntryPointMongos::handleRequest    mongod服务入口ServiceEntryPointMongod::handleRequest
 Future<DbResponse> ServiceEntryPointCommon::handleRequest(
     OperationContext* opCtx,
     const Message& m,
@@ -2444,6 +2466,7 @@ Future<DbResponse> ServiceEntryPointCommon::handleRequest(
     auto opRunner = hr.makeOpRunner();
     invariant(opRunner);
 
+	//运行对应command
     return opRunner->run()
         .then([hr = std::move(hr)](DbResponse response) mutable {
             hr.completeOperation(response);

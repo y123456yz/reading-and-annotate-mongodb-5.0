@@ -231,7 +231,8 @@ public:
     }
 
 	//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
-	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch  
+	//db版本信息检查参考DatabaseShardingState::checkDbVersion
 
 	//GetDatabaseVersionCmd:run
 	//ExecCommandDatabase::_commandExec()->refreshDatabase
@@ -243,6 +244,7 @@ public:
     }
 	//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
 	//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+	//db版本信息检查参考DatabaseShardingState::checkDbVersion
 
 	//GetShardVersion:run
 	//ExecCommandDatabase::_commandExec()->refreshCollection

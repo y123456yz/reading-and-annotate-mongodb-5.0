@@ -45,6 +45,9 @@ namespace mongo {
  * copy of that chunk metadata so shard secondaries can access the metadata. If a shard secondary,
  * retrieves chunk metadata from the shard persisted chunk metadata.
  */
+//mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+//mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
+
 class ShardServerCatalogCacheLoader : public CatalogCacheLoader {
     ShardServerCatalogCacheLoader(const ShardServerCatalogCacheLoader&) = delete;
     ShardServerCatalogCacheLoader& operator=(const ShardServerCatalogCacheLoader&) = delete;

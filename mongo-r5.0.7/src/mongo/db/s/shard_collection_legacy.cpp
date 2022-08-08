@@ -401,6 +401,7 @@ void writeShardingCatalogEntryForCollection(
         opCtx, nss, coll, true /*upsert*/));
 }
 
+//启用分片功能，强制所有分片进行路由刷新
 void refreshAllShards(OperationContext* opCtx,
                       const NamespaceString& nss,
                       const ShardId& dbPrimaryShardId,

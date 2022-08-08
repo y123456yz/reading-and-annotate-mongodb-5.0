@@ -491,7 +491,7 @@ Status setUpOperationContextStateForGetMore(OperationContext* opCtx,
 
 //注意这里为啥不用kMaxNumStaleVersionRetries
 const size_t ClusterFind::kMaxRetries = 10;
-//兼容低版本的协议
+//Strategy::queryOp mongos读请求
 CursorId ClusterFind::runQuery(OperationContext* opCtx,
                                const CanonicalQuery& query,
                                const ReadPreferenceSetting& readPref,
@@ -536,7 +536,7 @@ CursorId ClusterFind::runQuery(OperationContext* opCtx,
         try {
             return runQueryWithoutRetrying(
                 opCtx, query, readPref, cm, results, partialResultsReturned);
-        } catch (ExceptionFor<ErrorCodes::StaleDbVersion>& ex) {
+        } catch (ExceptionFor<ErrorCodes::StaleDbVersion>& ex) { //路由版本不一致，走下面异常逻辑获取最新路由并重试
             if (retries >= kMaxRetries) {
                 // Check if there are no retries remaining, so the last received error can be
                 // propagated to the caller.
@@ -601,6 +601,7 @@ CursorId ClusterFind::runQuery(OperationContext* opCtx,
 
             if (ex.code() != ErrorCodes::ShardInvalidatedForTargeting) {
                 if (auto staleInfo = ex.extraInfo<StaleConfigInfo>()) {
+					//路由异常的统计countStaleConfigErrors
                     catalogCache->invalidateShardOrEntireCollectionEntryForShardedCollection(
                         query.nss(), staleInfo->getVersionWanted(), staleInfo->getShardId());
                 } else {

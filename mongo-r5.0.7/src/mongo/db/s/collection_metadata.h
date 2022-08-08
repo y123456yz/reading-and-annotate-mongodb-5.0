@@ -46,9 +46,12 @@ namespace mongo {
  *
  * This class's chunk mapping is immutable once constructed.
  */ 
-//表的chunk元数据信息存到该结构中，一个表对应一个该结构，一一对应
+//表的chunk元数据信息存到该结构中，一个表对应一个该结构，一一对应，
 //最终所有表的路由信息存入MetadataManager._metadata该链表中
 //CollectionShardingRuntime::setFilteringMetadata让CollectionMetadata和MetadataManager关联起来
+
+//forceShardFilteringMetadataRefresh forceGetCurrentMetadata中构造
+//MetadataManager._metadata.metadata
 class CollectionMetadata {
 public:
     /**
@@ -266,8 +269,8 @@ public:
     }
 
 private:
-    // The full routing table for the collection or boost::none if the collection is not sharded
-    boost::optional<ChunkManager> _cm;
+    // The full routing table for the collection or boost::none if the collection is not sharded 
+    boost::optional<ChunkManager> _cm; 
 
     // The identity of this shard, for the purpose of answering "key belongs to me" queries. If the
     // collection is not sharded (_cm is boost::none), then this value will be empty.

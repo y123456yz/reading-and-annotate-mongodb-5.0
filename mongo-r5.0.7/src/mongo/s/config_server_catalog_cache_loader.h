@@ -34,6 +34,9 @@
 
 namespace mongo {
 
+//mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+//mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
+
 class ConfigServerCatalogCacheLoader final : public CatalogCacheLoader {
 public:
     ConfigServerCatalogCacheLoader();

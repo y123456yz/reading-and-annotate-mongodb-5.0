@@ -43,6 +43,7 @@ namespace mongo {
  * Once uuids are gone, relational operators should be implemented in this class.
  *
  */
+//dbversion°æ±¾¼ì²é²Î¿¼//DatabaseShardingState::checkDbVersion
 class DatabaseVersion : public DatabaseVersionBase {
 public:
     using DatabaseVersionBase::getTimestamp;

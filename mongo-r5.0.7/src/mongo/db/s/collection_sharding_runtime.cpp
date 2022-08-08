@@ -186,7 +186,7 @@ boost::optional<SharedSemiFuture<void>> CollectionShardingRuntime::getCriticalSe
     return _critSec.getSignal(op);
 }
 
-//recoverRefreshShardVersion
+//recoverRefreshShardVersion forceShardFilteringMetadataRefresh 
 //获取了新的路由元数据信息，则需要把最新的元数据信息刷新到_metadataManager
 void CollectionShardingRuntime::setFilteringMetadata(OperationContext* opCtx,
                                                      CollectionMetadata newMetadata) {
@@ -321,7 +321,8 @@ CollectionShardingRuntime::_getCurrentMetadataIfKnown(
     MONGO_UNREACHABLE;
 }
 
-//"error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
+
+//mongod收到的mongos路由版本信息mongos<mongod: "error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
 //checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow ()
 //版本检查，版本不一致则会携带"version mismatch detected for"，在外层的以下逻辑开始获取路由信息
 // 这个逻辑只会对小版本进行检查，如果大版本不一致，则在外层的下面的调用逻辑进行meta元数据刷新
@@ -329,6 +330,15 @@ CollectionShardingRuntime::_getCurrentMetadataIfKnown(
 //请求得外层会判断上面的StaleConfig异常,然后重新从config获取最新的路由信息
 //ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
 //  ->recoverRefreshShardVersion->forceGetCurrentMetadata
+
+
+//mongod收到的mongos路由版本信息mongos>mongod:  刷路由完成后，才进行对应请求
+//shard version不匹配路由刷新流程: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+//db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+
+
+//shard version版本检查，参考ExecCommandDatabase::_commandExec() 中会使用
+
 std::shared_ptr<ScopedCollectionDescription::Impl>
 CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
     OperationContext* opCtx, const boost::optional<mongo::LogicalTime>& atClusterTime) {
@@ -336,6 +346,7 @@ CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
     if (!optReceivedShardVersion)
         return kUnshardedCollection;
 
+	//接受到的mongos携带的版本信息
     const auto& receivedShardVersion = *optReceivedShardVersion;
 
     // An operation with read concern 'available' should never have shardVersion set.
@@ -344,6 +355,7 @@ CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
 
     auto csrLock = CSRLock::lockShared(opCtx, this);
 
+	//这是本地缓存的metadata
     auto optCurrentMetadata = _getCurrentMetadataIfKnown(atClusterTime);
     uassert(StaleConfigInfo(
                 _nss, receivedShardVersion, boost::none, ShardingState::get(opCtx)->shardId()),
@@ -392,7 +404,7 @@ CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
                                 << "but the client expects unsharded collection");
     }
 
-	//主版本不一致，则返回会携带该信息
+	//主版本不一致，则返回会携带该信息，shard version版本检查在这里
     if (wantedShardVersion.majorVersion() != receivedShardVersion.majorVersion()) {
         // Could be > or < - wanted is > if this is the source of a migration, wanted < if this is
         // the target of a migration

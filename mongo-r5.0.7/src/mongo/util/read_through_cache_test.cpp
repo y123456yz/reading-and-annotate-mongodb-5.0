@@ -110,7 +110,8 @@ protected:
     class CacheWithThreadPool : public T {
     public:
         CacheWithThreadPool(ServiceContext* service, size_t size, typename T::LookupFn lookupFn)
-            : T(service, _threadPool, size, std::move(lookupFn)) {
+		//例如Cache
+		: T(service, _threadPool, size, std::move(lookupFn)) {
             _threadPool.startup();
         }
 
@@ -137,6 +138,7 @@ TEST(ReadThroughCacheTest, StandaloneValueHandle) {
 TEST_F(ReadThroughCacheTest, FetchInvalidateAndRefetch) {
     auto fnTest = [&](auto cache) {
         for (int i = 1; i <= 3; i++) {
+			//ReadThroughCache::acquireAsync
             auto value = cache.acquire(_opCtx, "TestKey");
             ASSERT(value);
             ASSERT_EQ(100 * i, value->counter);
@@ -152,6 +154,7 @@ TEST_F(ReadThroughCacheTest, FetchInvalidateAndRefetch) {
     fnTest(CacheWithThreadPool<Cache>(
         getServiceContext(),
         1,
+        ////上面的ReadThroughCache::acquireAsync->_doLookupWhileNotValid调用
         [&, nextValue = 0](
             OperationContext*, const std::string& key, const Cache::ValueHandle&) mutable {
             ASSERT_EQ("TestKey", key);

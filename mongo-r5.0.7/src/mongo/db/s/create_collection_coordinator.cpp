@@ -859,6 +859,7 @@ void CreateCollectionCoordinator::_commit(OperationContext* opCtx) {
     updateCatalogEntry(opCtx, nss(), coll, getCurrentSession(_doc));
 }
 
+//建表后，强制所有shard进行路由刷新
 void CreateCollectionCoordinator::_finalize(OperationContext* opCtx) {
     LOGV2_DEBUG(5277907, 2, "Create collection _finalize", "namespace"_attr = nss());
 

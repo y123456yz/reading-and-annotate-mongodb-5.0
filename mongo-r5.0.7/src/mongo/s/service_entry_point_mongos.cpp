@@ -207,8 +207,10 @@ Future<DbResponse> OpRunner::run() try {
     return Future<DbResponse>::makeReady(std::move(dbResponse));
 }
 
+//mongos的HandleRequest::handleRequest()调用，执行读请求回调
 struct QueryOpRunner final : public OpRunner {
     using OpRunner::OpRunner;
+	//QueryOpRunner::runOperation
     DbResponse runOperation() override {
         // Commands are handled through CommandOpRunner and Strategy::clientCommand().
         invariant(!hr->nsString.isCommand());
@@ -217,7 +219,7 @@ struct QueryOpRunner final : public OpRunner {
         return Strategy::queryOp(hr->rec->getOpCtx(), hr->nsString, &hr->rec->getDbMessage());
     }
 };
-
+//mongos的HandleRequest::handleRequest()调用，执行getmore请求回调
 struct GetMoreOpRunner final : public OpRunner {
     using OpRunner::OpRunner;
     DbResponse runOperation() override {
@@ -225,7 +227,7 @@ struct GetMoreOpRunner final : public OpRunner {
         return Strategy::getMore(hr->rec->getOpCtx(), hr->nsString, &hr->rec->getDbMessage());
     }
 };
-
+//mongos的HandleRequest::handleRequest()调用，执行killcursors请求回调
 struct KillCursorsOpRunner final : public OpRunner {
     using OpRunner::OpRunner;
     DbResponse runOperation() override {
@@ -234,7 +236,7 @@ struct KillCursorsOpRunner final : public OpRunner {
         return {};
     }
 };
-
+//mongos的HandleRequest::handleRequest()调用，执行写请求回调
 struct WriteOpRunner final : public OpRunner {
     using OpRunner::OpRunner;
     DbResponse runOperation() override {
@@ -276,6 +278,7 @@ Future<DbResponse> HandleRequest::run() {
     auto fp = makePromiseFuture<void>();
     auto future = std::move(fp.future)
                       .then([this, anchor = shared_from_this()] { setupEnvironment(); })
+                      //执行对应command
                       .then([this, anchor = shared_from_this()] { return handleRequest(); })
                       .tap([this, anchor = shared_from_this()](const DbResponse& dbResponse) {
                           onSuccess(dbResponse);

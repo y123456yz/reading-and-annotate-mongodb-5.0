@@ -53,6 +53,8 @@
 namespace mongo {
 namespace {
 
+//FlushRoutingTableCacheUpdatesCmdBase 命令中使用，收到_flushRoutingTableCacheUpdates则触发从config server获取最新路由信息
+//，只有主节点执行运行_flushRoutingTableCacheUpdates
 template <typename Derived>
 class FlushRoutingTableCacheUpdatesCmdBase : public TypedCommand<Derived> {
 public:
@@ -128,6 +130,7 @@ public:
 
             oss.waitForMigrationCriticalSectionSignal(opCtx);
 
+			//触发强制路由刷新
             if (Base::request().getSyncFromConfig()) {
                 LOGV2_DEBUG(21982,
                             1,

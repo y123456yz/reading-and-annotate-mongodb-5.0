@@ -82,6 +82,7 @@ public:
                 "Sharding is not enabled",
                 grid->isShardingInitialized());
 
+		//grid::catalogCache
         auto const catalogCache = grid->catalogCache();
 
         const auto argumentElem = cmdObj.firstElement();

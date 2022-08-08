@@ -36,7 +36,11 @@
 #include "mongo/util/concurrency/notification.h"
 
 namespace mongo {
+//shardversion对应异常见StaleConfigInfo，dbversion版本异常见StaleDbRoutingVersion
+//shardversion版本检查地方见CollectionShardingRuntime::_getMetadataWithVersionCheckAt  
+//shard version版本检查见CollectionShardingRuntime::_getMetadataWithVersionCheckAt，db版本信息检查参考DatabaseShardingState::checkDbVersion  
 
+// shard version版本检查
 class StaleConfigInfo final : public ErrorExtraInfo {
 public:
     static constexpr auto code = ErrorCodes::StaleConfig;
@@ -144,7 +148,10 @@ private:
 };
 
 using StaleConfigException = ExceptionFor<ErrorCodes::StaleConfig>;
+//shardversion对应异常见StaleConfigInfo，dbversion版本异常见StaleDbRoutingVersion
+//shard version版本检查见CollectionShardingRuntime::_getMetadataWithVersionCheckAt，db版本信息检查参考DatabaseShardingState::checkDbVersion  
 
+//DatabaseShardingState::checkDbVersion  DB version版本检查
 class StaleDbRoutingVersion final : public ErrorExtraInfo {
 public:
     static constexpr auto code = ErrorCodes::StaleDbVersion;

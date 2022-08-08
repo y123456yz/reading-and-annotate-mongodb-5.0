@@ -132,6 +132,8 @@ Future<void> runCommandInvocation(std::shared_ptr<RequestExecutionContext> rec,
 /**
  * Append required fields to command response.
  */
+
+// 应答中添加time相关字段内容
 void appendRequiredFieldsToResponse(OperationContext* opCtx, BSONObjBuilder* responseBuilder) {
     // TODO SERVER-48142 should remove the following block.
     if (MONGO_unlikely(allowSkippingAppendRequiredFieldsToResponse.shouldFail())) {
@@ -1124,6 +1126,9 @@ Future<void> ParseAndRunCommand::run() {
 
 }  // namespace
 
+//QueryOpRunner::runOperation
+
+//mongos读请求执行入口
 DbResponse Strategy::queryOp(OperationContext* opCtx, const NamespaceString& nss, DbMessage* dbm) {
     globalOpCounters.gotQuery();
     globalOpCounters.gotQueryDeprecated();

@@ -147,7 +147,7 @@ StatusWith<CachedDatabaseInfo> CatalogCache::getDatabase(OperationContext* opCtx
     }
 }
 
-
+//CatalogCache::getCollectionRoutingInfo   CatalogCache::getCollectionRoutingInfoAt
 StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
     OperationContext* opCtx,
     const NamespaceString& nss,
@@ -182,11 +182,10 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
             ? CacheCausalConsistency::kLatestCached
             : CacheCausalConsistency::kLatestKnown;
 
-	    //cfg对应ConfigServerCatalogCacheLoader，mongod对应ShardServerCatalogCacheLoader(mongod实例)
-   	    //mongos对应ConfigServerCatalogCacheLoader 
 
-		//mongod ShardServerCatalogCacheLoader::acquireAsync,  mongos ConfigServerCatalogCacheLoader::acquireAsync
+		//最终通过这里调度执行 CatalogCache::CollectionCache::_lookupCollection
 		//ReadThroughCacheBase::_asyncWork
+		//collEntryFuture为RoutingTableHistoryValueHandle类型
 		auto collEntryFuture = _collectionCache.acquireAsync(nss, cacheConsistency);
 
         if (allowLocks) {
@@ -253,12 +252,17 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
     }
 }
 
+//下面这两个接口位于区别是直接读cache，还是刷最新路由
+//xxxxxxxxxxxxxxxx
+
+//获取表最新的路由信息
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfo(OperationContext* opCtx,
                                                                 const NamespaceString& nss,
                                                                 bool allowLocks) {
     return _getCollectionRoutingInfoAt(opCtx, nss, boost::none, allowLocks);
 }
 
+//获取表最新的路由信息
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfoAt(OperationContext* opCtx,
                                                                   const NamespaceString& nss,
                                                                   Timestamp atClusterTime) {
@@ -337,6 +341,7 @@ void CatalogCache::setOperationShouldBlockBehindCatalogCacheRefresh(OperationCon
     }
 }
 
+//???????????????????? yang add todo，为什么Cluster_ddl.cpp中createCollection这里需要对countStaleConfigErrors进行计数
 void CatalogCache::invalidateShardOrEntireCollectionEntryForShardedCollection(
     const NamespaceString& nss,
     const boost::optional<ChunkVersion>& wantedVersion,
@@ -423,7 +428,7 @@ void CatalogCache::report(BSONObjBuilder* builder) const {
     _collectionCache.reportStats(&cacheStatsBuilder);
 }
 
-//该
+//db.serverStatus().shardingStatistics.catalogCache统计，只有mongos才有该统计
 void CatalogCache::checkAndRecordOperationBlockedByRefresh(OperationContext* opCtx,
                                                            mongo::LogicalOp opType) {
     if (!isMongos() || !operationBlockedBehindCatalogCacheRefresh(opCtx)) {
@@ -489,6 +494,7 @@ void CatalogCache::Stats::report(BSONObjBuilder* builder) const {
     }
 }
 
+
 //CatalogCache._databaseCache成员
 //CatalogCache::CatalogCache中构造   
 CatalogCache::DatabaseCache::DatabaseCache(ServiceContext* service,
@@ -505,9 +511,13 @@ CatalogCache::DatabaseCache::DatabaseCache(ServiceContext* service,
                            return _lookupDatabase(opCtx, dbName, db, previousDbVersion);
                        },
                        kDatabaseCacheSize),
+    //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
+	//mongos config-server都对应ConfigServerCatalogCacheLoader	mongod都对应 ShardServerCatalogCacheLoader
       _catalogCacheLoader(catalogCacheLoader) {}
 
 //通过db.adminCommand({"flushRouterConfig":1})清除本地缓存的所有库表路由信息，当访问mongos的时候就会走到这里
+//获取getDatabaseVersion对应的DB版本信息  
+//CatalogCache::_getCollectionRoutingInfoAt 调度走到这里
 CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDatabase(
     OperationContext* opCtx,
     const std::string& dbName,
@@ -522,6 +532,8 @@ CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDa
 
     Timer t{};
     try {
+		//mongos  ConfigServerCatalogCacheLoader::getDatabase
+		//mongod  ShardServerCatalogCacheLoader::getDatabase
         auto newDb = _catalogCacheLoader.getDatabase(dbName).get();
         uassertStatusOKWithContext(
             Grid::get(opCtx)->shardRegistry()->getShard(opCtx, newDb.getPrimary()),
@@ -573,6 +585,8 @@ CatalogCache::CollectionCache::CollectionCache(ServiceContext* service,
                                opCtx, nss, collectionHistory, previousChunkVersion);
                        },
                        kCollectionCacheSize),
+	   //mongos注册参考initializeSharding	mongod注册参考initializeGlobalShardingStateForMongoD
+	   //mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
       _catalogCacheLoader(catalogCacheLoader) {}
 
 void CatalogCache::CollectionCache::reportStats(BSONObjBuilder* builder) const {
@@ -581,15 +595,17 @@ void CatalogCache::CollectionCache::reportStats(BSONObjBuilder* builder) const {
 
 void CatalogCache::CollectionCache::_updateRefreshesStats(const bool isIncremental,
                                                           const bool add) {
+    //numActiveIncrementalRefreshes numActiveFullRefreshes表示当前正在进行全量或者增量路由刷新的请求数
+    //countIncrementalRefreshesStarted numActiveFullRefreshes表示发起全量或者增量路由刷新的总次数
     if (add) {
-        if (isIncremental) {
+        if (isIncremental) { //获取增量路由
             _stats.numActiveIncrementalRefreshes.addAndFetch(1);
             _stats.countIncrementalRefreshesStarted.addAndFetch(1);
-        } else {
+        } else {//获取全量路由
             _stats.numActiveFullRefreshes.addAndFetch(1);
             _stats.countFullRefreshesStarted.addAndFetch(1);
         }
-    } else {
+    } else { //刷路由结束不管是成功还是失败，都要做对应减法，表示当前正在进行全量或者增量路由刷新的请求数
         if (isIncremental) {
             _stats.numActiveIncrementalRefreshes.subtractAndFetch(1);
         } else {
@@ -598,6 +614,7 @@ void CatalogCache::CollectionCache::_updateRefreshesStats(const bool isIncrement
     }
 }
 
+//db.serverStatus().shardingStatistics.catalogCache
 void CatalogCache::CollectionCache::Stats::report(BSONObjBuilder* builder) const {
     builder->append("numActiveIncrementalRefreshes", numActiveIncrementalRefreshes.load());
     builder->append("countIncrementalRefreshesStarted", countIncrementalRefreshesStarted.load());
@@ -608,8 +625,9 @@ void CatalogCache::CollectionCache::Stats::report(BSONObjBuilder* builder) const
     builder->append("countFailedRefreshes", countFailedRefreshes.load());
 }
 
-//CatalogCache::CollectionCache::CollectionCache  
-//从config获取cache.chunks.xx表获取路由数据  
+//CatalogCache::_getCollectionRoutingInfoAt 调度走到这里
+//CatalogCache::_getCollectionRoutingInfoAt->CatalogCache::CollectionCache::CollectionCache  
+//获取最新路由信息
 CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_lookupCollection(
     OperationContext* opCtx,
     const NamespaceString& nss,
@@ -638,6 +656,8 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
 
 		 //mongos注册参考initializeSharding   mongod注册参考initializeGlobalShardingStateForMongoD
  	    //mongos config-server都对应ConfigServerCatalogCacheLoader  mongod都对应 ShardServerCatalogCacheLoader
+
+		//从config server获取最新变化的路由信息
 		//ShardServerCatalogCacheLoader::getChunksSince
         auto collectionAndChunks = _catalogCacheLoader.getChunksSince(nss, lookupVersion).get();
                                   
@@ -648,18 +668,24 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                 existingHistory->optRt->getVersion().epoch() == collectionAndChunks.epoch) {
                 if (existingHistory->optRt->getVersion().getTimestamp().is_initialized() !=
                     collectionAndChunks.creationTime.is_initialized()) {
+
+					//版本信息有变化
                     return existingHistory->optRt
                         ->makeUpdatedReplacingTimestamp(collectionAndChunks.creationTime)
+                        //RoutingTableHistory::makeUpdated
                         .makeUpdated(collectionAndChunks.reshardingFields,
                                      collectionAndChunks.allowMigrations,
                                      collectionAndChunks.changedChunks);
                 } else {
-                    return existingHistory->optRt->makeUpdated(collectionAndChunks.reshardingFields,
+                	//版本信息无变化
+					//RoutingTableHistory::makeUpdated
+					return existingHistory->optRt->makeUpdated(collectionAndChunks.reshardingFields,
                                                                collectionAndChunks.allowMigrations,
                                                                collectionAndChunks.changedChunks);
                 }
             }
 
+			//第一次获取路由，直接构造一个全量的
             auto defaultCollator = [&]() -> std::unique_ptr<CollatorInterface> {
                 if (!collectionAndChunks.defaultCollation.isEmpty()) {
                     // The collation should have been validated upon collection creation
@@ -716,6 +742,7 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                           << ", new value: " << newRoutingHistory.getReshardingFields()->toBSON());
         }
 
+		//获取最新coll route完成
         LOGV2_FOR_CATALOG_REFRESH(4619901,
                                   isIncremental || newComparableVersion != previousVersion ? 0 : 1,
                                   "Refreshed cached collection",

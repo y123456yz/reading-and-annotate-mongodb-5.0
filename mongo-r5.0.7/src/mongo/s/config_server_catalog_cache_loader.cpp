@@ -139,14 +139,19 @@ SemiFuture<CollectionAndChangedChunks> ConfigServerCatalogCacheLoader::getChunks
         .semi();
 }
 
+//CatalogCache::DatabaseCache::_lookupDatabase 获取getDatabaseVersion对应的databaseVersion
+//从"config.databases"获取db版本信息，shard server才支持，，只能从mongod运行db.adminCommand({getDatabaseVersion :"dbxx"}) 
 SemiFuture<DatabaseType> ConfigServerCatalogCacheLoader::getDatabase(StringData dbName) {
     return ExecutorFuture<void>(_executor)
         .then([name = dbName.toString()] {
             ThreadClient tc("ConfigServerCatalogCacheLoader::getDatabase",
                             getGlobalServiceContext());
             auto opCtx = tc->makeOperationContext();
+			// ShardingCatalogClient* catalogClient()
             return Grid::get(opCtx.get())
                 ->catalogClient()
+                //ShardingCatalogClientImpl::getDatabase
+                //从"config.databases"获取db版本信息，shard server才支持，，只能从mongod运行db.adminCommand({getDatabaseVersion :"dbxx"}) 
                 ->getDatabase(opCtx.get(), name, repl::ReadConcernLevel::kMajorityReadConcern);
         })
         .semi();

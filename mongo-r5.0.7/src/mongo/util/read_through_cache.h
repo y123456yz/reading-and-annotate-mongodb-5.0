@@ -255,7 +255,7 @@ public:
      */ //CatalogCache::_getCollectionRoutingInfoAt  
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>&& std::is_constructible_v<Key, KeyType>)
-    SharedSemiFuture<ValueHandle> acquireAsync(
+    SharedSemiFuture<ValueHandle> acquireAsync( 
         const KeyType& key,
         CacheCausalConsistency causalConsistency = CacheCausalConsistency::kLatestCached) {
 
@@ -610,6 +610,7 @@ public:
           _cachedValue(std::move(cachedValue)),
           _minTimeInStore(std::move(minTimeInStore)) {}
 
+    //_doLookupWhileNotValid
     Future<LookupResult> asyncLookupRound() {
         auto [promise, future] = makePromiseFuture<LookupResult>();
 

@@ -160,7 +160,7 @@ private:
     /**
      * Represents an instance of what the filtering metadata for this collection was at a particular
      * point in time along with a counter of how many queries are still using it.
-     */
+     */ 
     struct CollectionMetadataTracker {
         CollectionMetadataTracker(const CollectionMetadataTracker&) = delete;
         CollectionMetadataTracker& operator=(const CollectionMetadataTracker&) = delete;
@@ -251,7 +251,7 @@ private:
     // the most recent metadata and is what is returned to new queries. The rest are previously
     // active collection metadata instances still in use by active server operations or cursors.
     //每个分片表的路由chunk信息存入该链表中
-    std::list<std::shared_ptr<CollectionMetadataTracker>> _metadata;
+    std::list<std::shared_ptr<CollectionMetadataTracker>> _metadata; 
 
     // Ranges being deleted, or scheduled to be deleted, by a background task.
     std::list<std::pair<ChunkRange, SharedSemiFuture<void>>> _rangesScheduledForDeletion;

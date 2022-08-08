@@ -51,14 +51,18 @@ struct TestValue {
     std::string value;
 };
 
+//cache
 using TestValueCache = InvalidatingLRUCache<int, TestValue>;
+//cache对应valuehandle
 using TestValueHandle = TestValueCache::ValueHandle;
 
+//带时间的cache
 using TestValueCacheCausallyConsistent = InvalidatingLRUCache<int, TestValue, Timestamp>;
 using TestValueHandleCausallyConsistent = TestValueCacheCausallyConsistent::ValueHandle;
 
 TEST(InvalidatingLRUCacheTest, StandaloneValueHandle) {
     TestValueHandle standaloneHandle({"Standalone value"});
+	//InvalidatingLRUCache::isValid
     ASSERT(standaloneHandle.isValid());
     ASSERT_EQ("Standalone value", standaloneHandle->value);
 }
@@ -92,8 +96,10 @@ TEST(InvalidatingLRUCacheTest, CausalConsistency) {
     auto value = cache.get(2, CacheCausalConsistency::kLatestCached);
     ASSERT(cache.advanceTimeInStore(2, Timestamp(200)));
     ASSERT_EQ("Value @ TS 100", value->value);
+	//注意这里advanceTimeInStore后，advance前的value就无效了
     ASSERT(!value.isValid());
     ASSERT_EQ("Value @ TS 100", cache.get(2, CacheCausalConsistency::kLatestCached)->value);
+	//注意这里advanceTimeInStore后，advance前的value就无效了
     ASSERT(!cache.get(2, CacheCausalConsistency::kLatestCached).isValid());
     ASSERT(!cache.get(2, CacheCausalConsistency::kLatestKnown));
 
@@ -117,10 +123,13 @@ TEST(InvalidatingLRUCacheTest, InvalidateNonCheckedOutValue) {
     ASSERT(cache.get(2));
     ASSERT_EQ(3UL, cache.getCacheInfo().size());
 
+	//第一个成员置为无效
     cache.invalidate(1);
     ASSERT(cache.get(0));
+	//这里判断已经无效了
     ASSERT(!cache.get(1));
     ASSERT(cache.get(2));
+	//有用size变为2
     ASSERT_EQ(2UL, cache.getCacheInfo().size());
 }
 
@@ -469,7 +478,8 @@ TEST(InvalidatingLRUCacheTest, AdvanceTimeSameTime) {
 
 template <class TCache, typename TestFunc>
 void parallelTest(size_t cacheSize, TestFunc doTest) {
-    constexpr auto kNumIterations = 100'000;
+  //  constexpr auto kNumIterations = 100'000;  yang change
+  constexpr auto kNumIterations = 100000;
     constexpr auto kNumThreads = 4;
 
     TCache cache(cacheSize);

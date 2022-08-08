@@ -314,18 +314,24 @@ public:
     void insertOrAssign(const Key& key, Value&& value, const Time& time) {
         LockGuardWithPostUnlockDestructor guard(_mutex);
         Time currentTime, currentTimeInStore;
+         //如果已经存在，则先老的key清理，从_cache和_evictedCheckedOutValues中清理key并释放资源 
         _invalidate(&guard, key, _cache.find(key), &currentTime, &currentTimeInStore);
+        //从新加入_cache中
         if (auto evicted =
                 _cache.add(key,
+                           //注意这里是std::make_shared
                            std::make_shared<StoredValue>(this,
                                                          ++_epoch,
                                                          key,
                                                          std::forward<Value>(value),
                                                          time,
                                                          std::max(time, currentTimeInStore)))) {
+            //也就是key
             const auto& evictedKey = evicted->first;
+            //也就是StoredValue
             auto& evictedValue = evicted->second;
 
+            //该StoredValue引用次数
             if (evictedValue.use_count() != 1) {
                 invariant(_evictedCheckedOutValues.emplace(evictedKey, evictedValue).second);
             } else {
@@ -570,6 +576,7 @@ private:
      * the '_evictedCheckedOutValues' map will be destroyed outside of the cache's mutex. This is
      * necessary, because the destructor function also acquires '_mutex'.
      */
+    //参考insertOrAssign，用于valus释放
     class LockGuardWithPostUnlockDestructor {
     public:
         LockGuardWithPostUnlockDestructor(Mutex& mutex) : _ul(mutex) {}
@@ -594,11 +601,14 @@ private:
      */
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>)
+    //insertOrAssign  insertOrAssignAndGet  invalidate  invalidateIf
+    //从_cache和_evictedCheckedOutValues中清理key并释放资源 
     void _invalidate(LockGuardWithPostUnlockDestructor* guard,
                      const KeyType& key,
                      typename Cache::iterator it,
                      Time* outTime = nullptr,
                      Time* outTimeInStore = nullptr) {
+        //_cache中存在key，直接释放
         if (it != _cache.end()) {
             auto& storedValue = it->second;
             storedValue->isValid.store(false);
@@ -611,6 +621,7 @@ private:
             return;
         }
 
+        //从_evictedCheckedOutValues清除
         auto itEvicted = _evictedCheckedOutValues.find(key);
         if (itEvicted == _evictedCheckedOutValues.end())
             return;
@@ -641,12 +652,15 @@ private:
     // look-up into that map.
     using EvictedCheckedOutValuesMap = stdx::
         unordered_map<Key, std::weak_ptr<StoredValue>, LruKeyHasher<Key>, LruKeyComparator<Key>>;
+
+    //参考insertOrAssign
     EvictedCheckedOutValuesMap _evictedCheckedOutValues;
 
     // An always-incrementing counter from which to obtain "identities" for each value stored in the
     // cache, so that different instantiations for the same key can be differentiated
     uint64_t _epoch{0};
 
+    //参考insertOrAssign
     Cache _cache;
 };
 

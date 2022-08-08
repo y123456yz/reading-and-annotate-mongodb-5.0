@@ -433,6 +433,8 @@ Status ShardingCatalogClientImpl::updateShardingCatalogEntryForCollection(
     return status.getStatus().withContext(str::stream() << "Collection metadata write failed");
 }
 
+//ConfigServerCatalogCacheLoader::getDatabase
+//从"config.databases"获取db版本信息，shard server才支持，，只能从mongod运行db.adminCommand({getDatabaseVersion :"dbxx"}) 
 DatabaseType ShardingCatalogClientImpl::getDatabase(OperationContext* opCtx,
                                                     StringData dbName,
                                                     repl::ReadConcernLevel readConcernLevel) {
@@ -450,6 +452,7 @@ DatabaseType ShardingCatalogClientImpl::getDatabase(OperationContext* opCtx,
         return DatabaseType(
             dbName.toString(), ShardId::kConfigServerId, true, DatabaseVersion::makeFixed());
 
+	//从"config.databases"获取db版本信息，shard server才支持，，只能从mongod运行db.adminCommand({getDatabaseVersion :"dbxx"}) 
     auto result =
         _fetchDatabaseMetadata(opCtx, dbName.toString(), kConfigReadSelector, readConcernLevel);
     if (result == ErrorCodes::NamespaceNotFound) {
@@ -491,16 +494,18 @@ std::vector<DatabaseType> ShardingCatalogClientImpl::getAllDBs(OperationContext*
     return databases;
 }
 
+//从"config.databases"获取db版本信息，shard server才支持，，只能从mongod运行db.adminCommand({getDatabaseVersion :"dbxx"}) 
 StatusWith<repl::OpTimeWith<DatabaseType>> ShardingCatalogClientImpl::_fetchDatabaseMetadata(
     OperationContext* opCtx,
     const std::string& dbName,
     const ReadPreferenceSetting& readPref,
     repl::ReadConcernLevel readConcernLevel) {
     invariant(dbName != NamespaceString::kAdminDb && dbName != NamespaceString::kConfigDb);
-
+	//从"config.databases"获取db版本信息
     auto findStatus = _exhaustiveFindOnConfig(opCtx,
                                               readPref,
                                               readConcernLevel,
+                                              //"config.databases"
                                               DatabaseType::ConfigNS,
                                               BSON(DatabaseType::name(dbName)),
                                               BSONObj(),

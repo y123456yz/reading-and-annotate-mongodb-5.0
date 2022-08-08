@@ -681,6 +681,7 @@ IndexBounds ChunkManager::collapseQuerySolution(const QuerySolutionNode* node) {
     return bounds;
 }
 
+//MetadataManager::getActiveMetadata    assertIntersectingChunkHasNotMoved
 ChunkManager ChunkManager::makeAtTime(const ChunkManager& cm, Timestamp clusterTime) {
     return ChunkManager(cm.dbPrimary(), cm.dbVersion(), cm._rt, clusterTime);
 }
