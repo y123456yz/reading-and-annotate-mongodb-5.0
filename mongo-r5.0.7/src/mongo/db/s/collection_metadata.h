@@ -46,12 +46,20 @@ namespace mongo {
  *
  * This class's chunk mapping is immutable once constructed.
  */ 
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+
+ 
 //表的chunk元数据信息存到该结构中，一个表对应一个该结构，一一对应，
-//最终所有表的路由信息存入MetadataManager._metadata该链表中
+//最终分片表的路由信息存入MetadataManager._metadata该链表中，_metadata包含多个元数据版本
 //CollectionShardingRuntime::setFilteringMetadata让CollectionMetadata和MetadataManager关联起来
 
 //forceShardFilteringMetadataRefresh forceGetCurrentMetadata中构造
 //MetadataManager._metadata.metadata
+
+//CollectionMetadata记录指定shard对应的ChunkManager，ChunkManager记录一个表对应的库、主分片、成员RoutingTableHistoryValueHandle记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
 class CollectionMetadata {
 public:
     /**
@@ -270,6 +278,7 @@ public:
 
 private:
     // The full routing table for the collection or boost::none if the collection is not sharded 
+    //ChunkManager记录一个表对应的库、主分片、成员RoutingTableHistoryValueHandle记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
     boost::optional<ChunkManager> _cm; 
 
     // The identity of this shard, for the purpose of answering "key belongs to me" queries. If the

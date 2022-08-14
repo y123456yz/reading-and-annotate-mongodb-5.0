@@ -39,6 +39,13 @@ namespace mongo {
  * CollectionShardingState from which it was derived and because of this it must not be accessed
  * outside of a collection lock.
  */
+/*
+//Collection_sharding_runtime.cpp (src\mongo\db\s):class UnshardedCollection : public ScopedCollectionDescription::Impl {
+//Collection_sharding_state_factory_standalone.cpp (src\mongo\db\s):class UnshardedCollection : public ScopedCollectionDescription::Impl {
+//Metadata_manager.cpp (src\mongo\db\s):class RangePreserver : public ScopedCollectionDescription::Impl {
+//Metadata_manager.cpp (src\mongo\db\s):    class MetadataAtTimestamp : public ScopedCollectionDescription::Impl 
+*/  
+//主要用于存放分片表元数据信息(表名、分片片建、chunkmap、shardversion等)
 class ScopedCollectionDescription {
 public:
     class Impl {

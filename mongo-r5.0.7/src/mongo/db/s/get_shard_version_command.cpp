@@ -95,6 +95,8 @@ public:
         AutoGetCollection autoColl(opCtx, nss, MODE_IS, AutoGetCollectionViewMode::kViewsPermitted);
         auto* const csr = CollectionShardingRuntime::get(opCtx, nss);
 
+
+		//如果启用了分片，则类型为CollectionMetadata    
         const auto optMetadata = csr->getCurrentMetadataIfKnown();
         if (!optMetadata) {
             result.append("global", "UNKNOWN");
@@ -104,6 +106,7 @@ public:
             }
         } else {
             const auto& metadata = *optMetadata;
+			//如果启用了分片，则类型为CollectionMetadata::getShardVersion    
             result.appendTimestamp("global", metadata.getShardVersion().toLong());
 
             if (cmdObj["fullMetadata"].trueValue()) {

@@ -247,6 +247,8 @@ TEST_F(ReadThroughCacheTest, FetchInvalidateValueAndRefetch) {
                            const Timestamp& timeInStore) mutable {
             ASSERT_EQ("TestKey", key);
             ++nextValue;
+
+			//ReadThroughCache::LookupResult
             return CausallyConsistentCache::LookupResult(CachedValue(100 * nextValue),
                                                          Timestamp(nextValue));
         }));
@@ -397,6 +399,7 @@ TEST_F(ReadThroughCacheAsyncTest, SuccessfulInProgressLookupForNotCausallyConsis
     auto future = inProgress.addWaiter(WithLock::withoutLock());
     ASSERT(!future.isReady());
 
+	//这里会调用上面cache中定义得回调
     auto res = inProgress.asyncLookupRound().get();
     ASSERT(inProgress.valid(WithLock::withoutLock()));
     ASSERT(res.v);

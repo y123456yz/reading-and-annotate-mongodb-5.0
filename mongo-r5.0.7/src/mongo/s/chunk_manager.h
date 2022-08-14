@@ -65,6 +65,14 @@ struct ShardVersionTargetingInfo {
 
 // Map from a shard to a struct indicating both the max chunk version on that shard and whether the
 // shard is currently marked as needing a catalog cache refresh (stale).
+
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+
+//RoutingTableHistory._chunkMap,记录分片表所有得chunks信息
+//RoutingTableHistory._shardVersions,记录分片表某个分片上面得shardversion信息
 using ShardVersionMap = stdx::unordered_map<ShardId, ShardVersionTargetingInfo, ShardId::Hasher>;
 
 /**
@@ -72,6 +80,13 @@ using ShardVersionMap = stdx::unordered_map<ShardId, ShardVersionTargetingInfo, 
  * provides a simpler, high-level interface for domain specific operations without exposing the
  * underlying implementation.
  */
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+ 
+//RoutingTableHistory._chunkMap,记录分片表所有得chunks信息
+//RoutingTableHistory._shardVersions,记录分片表某个分片上面得shardversion信息
 class ChunkMap {
     // Vector of chunks ordered by max key.
     using ChunkVector = std::vector<std::shared_ptr<ChunkInfo>>;
@@ -148,6 +163,13 @@ private:
  * In-memory representation of the routing table for a single sharded collection at various points
  * in time.
  */
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+ 
+//RoutingTableHistory记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
+//ChunkManager包含OptionalRoutingTableHistory成员_rt，OptionalRoutingTableHistory包含RoutingTableHistory
 class RoutingTableHistory {
     RoutingTableHistory(const RoutingTableHistory&) = delete;
     RoutingTableHistory& operator=(const RoutingTableHistory&) = delete;
@@ -364,6 +386,9 @@ private:
 
     bool _allowMigrations;
 
+    //RoutingTableHistory._chunkMap,记录分片表所有得chunks信息
+    //RoutingTableHistory._shardVersions,记录分片表某个分片上面得shardversion信息
+
     // Map from the max for each chunk to an entry describing the chunk. The union of all chunks'
     // ranges must cover the complete space from [MinKey, MaxKey).
     ChunkMap _chunkMap;
@@ -476,7 +501,13 @@ private:
  * supports sharded collections (i.e., collections which have entries in config.collections and
  * config.chunks).
  */
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+ 
 //CatalogCache::CollectionCache::_lookupCollection
+//ChunkManager::_rt  ChunkManager包含OptionalRoutingTableHistory成员_rt，OptionalRoutingTableHistory包含RoutingTableHistory
 struct OptionalRoutingTableHistory {
     // UNSHARDED collection constructor
     OptionalRoutingTableHistory() = default;
@@ -485,14 +516,23 @@ struct OptionalRoutingTableHistory {
     OptionalRoutingTableHistory(RoutingTableHistory&& rt) : optRt(std::move(rt)) {}
 
     // If boost::none, the collection is UNSHARDED, otherwise it is SHARDED
+    //RoutingTableHistoryValueHandle实际上就对应该结构
+    //RoutingTableHistory记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
     boost::optional<RoutingTableHistory> optRt;
 };
 
 //CollectionCache继承该类
 using RoutingTableHistoryCache =
     ReadThroughCache<NamespaceString, OptionalRoutingTableHistory, ComparableChunkVersion>;
-//ChunkManager._rt
+//ChunkManager._rt, 实际上对应OptionalRoutingTableHistory，
+//RoutingTableHistory记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
 using RoutingTableHistoryValueHandle = RoutingTableHistoryCache::ValueHandle;
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+
+
 
 /**
  * Combines a shard, the shard version, and database version that the shard should be using
@@ -511,10 +551,18 @@ struct ShardEndpoint {
 /**
  * Wrapper around a RoutingTableHistory, which pins it to a particular point in time.
  */
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+
+ 
 //MetadataManager::getActiveMetadata    assertIntersectingChunkHasNotMoved
-//CollectionMetadata._cm为该类型，一个表对应一个该结构，一一对应,最终所有表的路由信息存入MetadataManager._metadata该链表中,
+//CollectionMetadata._cm为该类型，一个表对应一个该结构，一一对应,最终该表的路由信息存入MetadataManager._metadata该链表中,
 //  在CatalogCache::_getCollectionRoutingInfoAt中获取到最新路由信息后构造
 //ChunkManagerTargeter._cm为该类型，在ChunkManagerTargeter::refreshIfNeeded中获取最新路由
+
+//ChunkManager记录一个表对应的库、主分片、成员RoutingTableHistoryValueHandle记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
 class ChunkManager {
 public:
     ChunkManager(ShardId dbPrimary,
@@ -701,10 +749,12 @@ public:
     }
 
     bool uuidMatches(UUID uuid) const {
+        //OptionalRoutingTableHistory::optRt, RoutingTableHistory::uuidMatches
         return _rt->optRt->uuidMatches(uuid);
     }
 
     boost::optional<UUID> getUUID() const {
+        ////OptionalRoutingTableHistory::optRt
         return _rt->optRt->getUUID();
     }
 
@@ -721,9 +771,12 @@ public:
     }
 
 private:
+    //主分片
     ShardId _dbPrimary;
     DatabaseVersion _dbVersion;
-    
+
+    //也就是OptionalRoutingTableHistory类型
+    //OptionalRoutingTableHistory.optRt(RoutingTableHistory)记录一个分片表的表名、uuid、片建信息、路由chunk、在每个分片的shardversion等
     RoutingTableHistoryValueHandle _rt;
 
     boost::optional<Timestamp> _clusterTime;

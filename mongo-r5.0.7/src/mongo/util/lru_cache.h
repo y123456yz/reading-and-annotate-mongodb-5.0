@@ -95,44 +95,57 @@ public:
     using iterator = typename List::iterator;
     using const_iterator = typename List::const_iterator;
 
+    //iterator指向list中对应KV
     using Map = stdx::unordered_map<K, iterator, Hash, KeyEqual>;
 
     using key_type = K;
     using mapped_type = V;
 
-    /**
+    /**  
+     * kv已经存在则直接替换，不返回KV
      * Inserts a new entry into the cache. If the given key already exists in the cache,
      * then we will drop the old entry and replace it with the given new entry. The cache
      * takes ownership of the new entry.
      *
+     * 队列满了，则最旧的KV会从队列剔除，并返回最旧的KV
      * If the cache is full when add() is called, the least recently used entry will be
      * evicted from the cache and returned to the caller.
      *
      * This method does not provide the strong exception safe guarantee. If a call
      * to this method throws, the cache may be left in an inconsistent state.
      */
+    //队列未满，则写入，并返回none；如果队列满，则删除最旧的KV，并写入新的KV，返回删除的KV；
+    //如果KV已经存在，则直接替换，返回none; 如果maxsize为0则直接返回要写入的KV，啥也不做
     boost::optional<std::pair<K, V>> add(const K& key, V entry) {
         // If the key already exists, delete it first.
+        //已经有对应K存在，则先删除list中老的KV
         auto i = _map.find(key);
         if (i != _map.end()) {
             _list.erase(i->second);
         }
 
+        //表头写入新KV
         _list.push_front(std::make_pair(key, std::move(entry)));
+        //map中记录这个新的映射关系
         _map[key] = _list.begin();
 
         // If the store has grown beyond its allowed size,
         // evict the least recently used entry.
-        if (size() > _maxSize) {
+        //如果是替换同一个K的Value，则size不会变化
+        
+        //超过_maxSize，则把list末尾的KV从list和map中清除
+        if (size() > _maxSize) {//说明非空list写入了新的KV或者定义maxsize=0,写入新KV
             auto pair = std::move(_list.back());
 
             _map.erase(pair.first);
             _list.pop_back();
 
             invariant(size() <= _maxSize);
+             //超限的KV会直接返回
             return std::move(pair);
         }
 
+        //如果是替换同一个key的value或者定义maxsize=0，则返回null
         invariant(size() <= _maxSize);
         return boost::none;
     }
@@ -309,6 +322,7 @@ public:
 
 private:
     // The maximum allowable number of entries in the cache.
+    //list和map中最多缓存的KV个数
     const std::size_t _maxSize;
 
     // (K, V) pairs are stored in this std::list. They are sorted in order

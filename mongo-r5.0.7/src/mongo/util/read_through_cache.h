@@ -266,15 +266,18 @@ public:
         stdx::unique_lock ul(_mutex);
 
         // Re-check the cache under a mutex, before kicking-off the asynchronous lookup
+        //InvalidatingLRUCache::get  找到直接返回
         if (auto cachedValue = _cache.get(key, causalConsistency))
             return {std::move(cachedValue)};
 
         // Join an in-progress lookup if one has already been scheduled
         if (auto it = _inProgressLookups.find(key); it != _inProgressLookups.end())
+            //InProgressLookup::addWaiter
             return it->second->addWaiter(ul);
 
         // Schedule an asynchronous lookup for the key
         auto [cachedValue, timeInStore] = _cache.getCachedValueAndTimeInStore(key);
+        //写入新的key:InProgressLookup到_inProgressLookups这个map表中
         auto [it, emplaced] = _inProgressLookups.emplace(
             key,
             std::make_unique<InProgressLookup>(
@@ -480,10 +483,12 @@ private:
      * This method implements an asynchronous "while (!valid)" loop over 'key', which must be on the
      * in-progress map.
      */
+    ////ReadThroughCache::acquireAsync
     Future<LookupResult> _doLookupWhileNotValid(Key key, StatusWith<LookupResult> sw) {
         stdx::unique_lock ul(_mutex);
         auto it = _inProgressLookups.find(key);
         invariant(it != _inProgressLookups.end());
+        //InProgressLookup类型
         auto& inProgressLookup = *it->second;
         auto [promisesToSet, result, mustDoAnotherLoop] = [&] {
             // The thread pool is shutting down, so terminate the loop
@@ -493,6 +498,7 @@ private:
                                        false);
 
             // There was a concurrent call to 'invalidate', so start all over
+            //InProgressLookup::valid
             if (!inProgressLookup.valid(ul))
                 return std::make_tuple(
                     std::vector<std::unique_ptr<SharedPromise<ValueHandle>>>{},
@@ -574,6 +580,7 @@ private:
     // lookup on this map for 'kLatestKnown'.
     //
     // This map is protected by '_mutex'.
+    //acquireAsync中写入k:InProgressLookup
     InProgressLookupsMap _inProgressLookups;
 };
 
@@ -601,6 +608,7 @@ private:
  *      inProgress.signalWaiters(result);
  * }
  */
+//ReadThroughCache::acquireAsync中构造使用
 template <typename Key, typename Value, typename Time>
 class ReadThroughCache<Key, Value, Time>::InProgressLookup {
 public:

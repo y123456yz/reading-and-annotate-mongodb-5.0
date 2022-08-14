@@ -46,6 +46,11 @@ namespace mongo {
  * sharding architecture.
  */
 //
+//一个表对应一个CollectionShardingRuntime，CollectionShardingRuntime->MetadataManager->CollectionMetadataTracker
+//  ->CollectionMetadata->ChunkManager->RoutingTableHistoryValueHandle(OptionalRoutingTableHistory)->
+//  ->RoutingTableHistory->ChunkMap+ShardVersionMap+片建等
+
+
 //一个表对应一个collectionShardingRuntime，继承CollectionShardingState最终统一由CollectionShardingStateMap这个map表管理
 //每个collectionShardingRuntime对应一个MetadataManager存储表路由元数据，元数据通过CatalogCache::getCollectionRoutingInfoWithRefresh获取
 class CollectionShardingRuntime final : public CollectionShardingState,

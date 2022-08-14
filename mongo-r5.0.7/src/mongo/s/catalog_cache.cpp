@@ -570,6 +570,9 @@ CatalogCache::DatabaseCache::LookupResult CatalogCache::DatabaseCache::_lookupDa
 
 //CatalogCache._collectionCache 
 //CatalogCache::CatalogCache中构造
+//CollectionCache继承该类
+//using RoutingTableHistoryCache =
+//    ReadThroughCache<NamespaceString, OptionalRoutingTableHistory, ComparableChunkVersion>; //分别对应Key  value  time
 CatalogCache::CollectionCache::CollectionCache(ServiceContext* service,
                                                ThreadPoolInterface& threadPool,
                                                CatalogCacheLoader& catalogCacheLoader)
@@ -581,6 +584,7 @@ CatalogCache::CollectionCache::CollectionCache(ServiceContext* service,
                               const NamespaceString& nss,
                               const ValueHandle& collectionHistory,
                               const ComparableChunkVersion& previousChunkVersion) {
+                           //获取key(nss)对应value(RoutingTableHistory)
                            return _lookupCollection(
                                opCtx, nss, collectionHistory, previousChunkVersion);
                        },

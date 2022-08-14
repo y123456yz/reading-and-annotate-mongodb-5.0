@@ -123,7 +123,7 @@ TEST(InvalidatingLRUCacheTest, InvalidateNonCheckedOutValue) {
     ASSERT(cache.get(2));
     ASSERT_EQ(3UL, cache.getCacheInfo().size());
 
-	//第一个成员置为无效
+	//第一个成员置为无效并从cache中清理回收
     cache.invalidate(1);
     ASSERT(cache.get(0));
 	//这里判断已经无效了
@@ -161,6 +161,7 @@ TEST(InvalidatingLRUCacheTest, InvalidateOneKeyDoesnAffectAnyOther) {
     cache.insertOrAssign(3, {"Key which is not neither checked-out nor invalidated (3)"});
 
     // Invalidated keys 1 and 2 above and then ensure that only they are affected
+    //第1和2个成员置为无效并从cache中清理回收
     cache.invalidate(1);
     cache.invalidate(2);
 
@@ -195,6 +196,7 @@ TEST(InvalidatingLRUCacheTest, CheckedOutItemsAreInvalidatedWhenEvictedFromCache
     cache.insertOrAssign(3, {"Non-checked-out key (3)"});
 
     {
+		//InvalidatingLRUCache::getCacheInfo
         auto cacheInfo = cache.getCacheInfo();
         std::sort(cacheInfo.begin(), cacheInfo.end(), [](auto a, auto b) { return a.key < b.key; });
         ASSERT_EQ(4UL, cacheInfo.size());
@@ -207,7 +209,9 @@ TEST(InvalidatingLRUCacheTest, CheckedOutItemsAreInvalidatedWhenEvictedFromCache
 
     // Invalidating the key, which was booted out due to cache size exceeded should still be
     // reflected on the checked-out key
+    //lru超过max限制的KV的valid还是有效的
     ASSERT(checkedOutKey.isValid());
+	//InvalidatingLRUCache::invalidate   把valid置为false，同时从_evictedCheckedOutValues清理掉该KV，所以size会减1
     cache.invalidate(0);
     ASSERT(!checkedOutKey.isValid());
 
@@ -344,6 +348,7 @@ TEST(InvalidatingLRUCacheTest, OrderOfDestructionOfHandlesDiffersFromOrderOfInse
     auto secondValue = cache.insertOrAssignAndGet(100, {"Key 100, Value 2"});
     ASSERT(secondValue);
     ASSERT(secondValue.isValid());
+	//从这里可以看出，如果KV的key相同，value变了，则原来的value会无效
     ASSERT(!firstValue->isValid());
 
     // This will evict the second value of key 100
@@ -382,6 +387,7 @@ TEST(InvalidatingLRUCacheTest, InvalidateIfAllEntries) {
     }
 
     const std::vector checkedOutValues{cache.get(0), cache.get(1), cache.get(2)};
+	//cache中所有invalidate无效
     cache.invalidateIf([](int, TestValue*) { return true; });
 }
 
@@ -389,6 +395,7 @@ TEST(InvalidatingLRUCacheTest, CacheSizeZero) {
     TestValueCache cache(0);
 
     {
+		//这里的{}限定了作用范围
         auto immediatelyEvictedValue = cache.insertOrAssignAndGet(0, TestValue{"Evicted value"});
         auto anotherImmediatelyEvictedValue =
             cache.insertOrAssignAndGet(1, TestValue{"Another evicted value"});
@@ -441,12 +448,17 @@ TEST(InvalidatingLRUCacheTest, CacheSizeZeroInvalidateAllEntries) {
 TEST(InvalidatingLRUCacheTest, CacheSizeZeroCausalConsistency) {
     TestValueCacheCausallyConsistent cache(0);
 
+	//InvalidatingLRUCache::advanceTimeInStore
     ASSERT(cache.advanceTimeInStore(100, Timestamp(30)));
+	//如果cache size为0，则KV写入不到_cache，并直接释放，所以下面getCachedValueAndTimeInStore获取不到
     cache.insertOrAssign(100, TestValue("Value @ TS 30"), Timestamp(30));
+
+	//??????????????????????? 这里是从evict和cache同时查找，应该evict能找到才对
     auto [cachedValueAtTS30, timeInStoreAtTS30] = cache.getCachedValueAndTimeInStore(100);
     ASSERT_EQ(Timestamp(), timeInStoreAtTS30);
     ASSERT(!cachedValueAtTS30);
 
+	//cache(0);则写入的KV会进入_evictedCheckedOutValues，并通过ValueHandle(std::move(evictedValue));返回
     auto valueAtTS30 = cache.insertOrAssignAndGet(100, TestValue("Value @ TS 30"), Timestamp(30));
     ASSERT_EQ("Value @ TS 30", cache.get(100, CacheCausalConsistency::kLatestCached)->value);
     ASSERT_EQ("Value @ TS 30", cache.get(100, CacheCausalConsistency::kLatestKnown)->value);
@@ -473,6 +485,7 @@ TEST(InvalidatingLRUCacheTest, AdvanceTimeNoEntry) {
 TEST(InvalidatingLRUCacheTest, AdvanceTimeSameTime) {
     TestValueCacheCausallyConsistent cache(1);
     cache.insertOrAssignAndGet(100, TestValue("Value @ TS 30"), Timestamp(30));
+	//advanceTimeInStore的newTimeInStore必须大于timeInStore，否则返回false
     ASSERT(!cache.advanceTimeInStore(100, Timestamp(30)));
 }
 

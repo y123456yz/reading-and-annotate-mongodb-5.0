@@ -86,12 +86,14 @@ inline constexpr bool isCausallyConsistent = isCausallyConsistentImpl<T>::value;
 enum class CacheCausalConsistency {
     // Provides the fastest acquire semantics, where if the cache already contains a
     // (non-invalidated) value cached, it will be immediately returned. Otherwise, the 'acquire'
-    // call will block.
+    // call will block.  // block主要体现在ReadThroughCach::acquireAsync
     kLatestCached,
 
     // Provides a causally-consistent semantics with respect to a previous call to
     // 'advanceTimeInStore', where if the cache's (non-invalidated) value has time == timeInStore,
     // the value will be immediately returned. Otherwise, the 'acquire' call will block.
+    // storedValue->time < storedValue->timeInStore 则获取ValueHandle(nullptr);，参考get,
+    // block主要体现在ReadThroughCach::acquireAsync
     kLatestKnown,
 };
 
@@ -126,7 +128,7 @@ struct IsTrustedHasher<LruKeyHasher<Key>, Key> : std::true_type {};
  * the lowest possible value for the time.
  */
 template <typename Key, typename Value, typename Time = CacheNotCausallyConsistent>
-class InvalidatingLRUCache {
+class InvalidatingLRUCache { 
     /**
      * Data structure representing the values stored in the cache.
      */
@@ -312,12 +314,16 @@ public:
     }
 
     void insertOrAssign(const Key& key, Value&& value, const Time& time) {
+        //并发控制，加锁
         LockGuardWithPostUnlockDestructor guard(_mutex);
         Time currentTime, currentTimeInStore;
          //如果已经存在，则先老的key清理，从_cache和_evictedCheckedOutValues中清理key并释放资源 
         _invalidate(&guard, key, _cache.find(key), &currentTime, &currentTimeInStore);
         //从新加入_cache中
         if (auto evicted =
+                //LRUCache::add
+        //队列未满，则写入，并返回none；如果队列满，则删除最旧的KV，并写入新的KV，返回删除的KV；
+        //如果KV已经存在，则直接替换，返回none; 如果maxsize为0则直接返回要写入的KV，啥也不做
                 _cache.add(key,
                            //注意这里是std::make_shared
                            std::make_shared<StoredValue>(this,
@@ -326,12 +332,13 @@ public:
                                                          std::forward<Value>(value),
                                                          time,
                                                          std::max(time, currentTimeInStore)))) {
+            //超限的KV(超过了队列设置的最大KV限制)最终放入_evictedCheckedOutValues
             //也就是key
             const auto& evictedKey = evicted->first;
             //也就是StoredValue
             auto& evictedValue = evicted->second;
 
-            //该StoredValue引用次数
+            //该StoredValue引用次数，如果是加入到了队列，则引用计数大于1，如果是淘汰的KV，则这里计数1
             if (evictedValue.use_count() != 1) {
                 invariant(_evictedCheckedOutValues.emplace(evictedKey, evictedValue).second);
             } else {
@@ -345,6 +352,7 @@ public:
 
             // evictedValue must always be handed-off to guard so that the destructor never runs run
             // while the mutex is held
+            //guard析构中释放旧KV中的evictedValue
             guard.releasePtr(std::move(evictedValue));
         }
     }
@@ -367,11 +375,22 @@ public:
         return insertOrAssignAndGet(key, std::move(value), Time());
     }
 
+    //insertOrAssignAndGet写入KV后，从cache中查找队列中的KV, 
+    //get、getCachedValueAndTimeInStore从cache和_evictedCheckedOutValues同时查找
+    //getCacheInfo获取cache和_evictedCheckedOutValues上所有KV
+    //注意这几个的区别
+
+
+    //从cache中查找队列中的KV
     ValueHandle insertOrAssignAndGet(const Key& key, Value&& value, const Time& time) {
         LockGuardWithPostUnlockDestructor guard(_mutex);
         Time currentTime, currentTimeInStore;
         _invalidate(&guard, key, _cache.find(key), &currentTime, &currentTimeInStore);
         if (auto evicted =
+        //队列未满，则写入，并返回none；如果队列满，则删除最旧的KV，并写入新的KV，返回删除的KV；
+        //如果KV已经存在，则直接替换，返回none; 如果maxsize为0则直接返回要写入的KV，啥也不做
+
+        //LRUCache:add
                 _cache.add(key,
                            std::make_shared<StoredValue>(this,
                                                          ++_epoch,
@@ -382,16 +401,19 @@ public:
             const auto& evictedKey = evicted->first;
             auto& evictedValue = evicted->second;
 
+            //该StoredValue引用次数，如果是加入到了队列，则引用计数大于1，如果是淘汰的KV，则这里计数1
             if (evictedValue.use_count() != 1) {
                 invariant(_evictedCheckedOutValues.emplace(evictedKey, evictedValue).second);
             } else {
                 invariant(evictedValue.use_count() == 1);
 
                 if (evictedKey == key) {
+                    //cache size初始化未0，默认就会进来
                     // This handles the zero cache size case where the inserted value was
                     // immediately evicted. Because it still needs to be tracked for invalidation
                     // purposes, we need to add it to the _evictedCheckedOutValues map.
                     invariant(_evictedCheckedOutValues.emplace(evictedKey, evictedValue).second);
+                    //返回传进来的原始value
                     return ValueHandle(std::move(evictedValue));
                 } else {
                     // Since the cache had the only reference to the evicted value, there could be
@@ -403,9 +425,11 @@ public:
 
             // evictedValue must always be handed-off to guard so that the destructor never runs
             // while the mutex is held
+            //淘汰的老KV直接通过guard释放
             guard.releasePtr(std::move(evictedValue));
         }
 
+        //注意这里只在_cache中查找，没有查找_evictedCheckedOutValues
         auto it = _cache.find(key);
         invariant(it != _cache.end());
         return ValueHandle(it->second);
@@ -418,6 +442,10 @@ public:
      */
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>)
+    //insertOrAssignAndGet写入KV后，从cache中查找队列中的KV, 
+    //get、getCachedValueAndTimeInStore从cache和_evictedCheckedOutValues同时查找
+    //getCacheInfo获取cache和_evictedCheckedOutValues上所有KV
+    //注意这几个的区别
     ValueHandle get(
         const KeyType& key,
         CacheCausalConsistency causalConsistency = CacheCausalConsistency::kLatestCached) {
@@ -461,6 +489,7 @@ public:
             storedValue = it->second.lock();
         }
 
+        //没找到直接返回true，参考test
         if (!storedValue) {
             return true;
         }
@@ -471,6 +500,7 @@ public:
             return true;
         }
 
+        //advanceTimeInStore的newTimeInStore必须大于timeInStore，否则返回false
         return false;
     }
 
@@ -481,6 +511,10 @@ public:
      */
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>)
+    //insertOrAssignAndGet写入KV后，从cache中查找队列中的KV, 
+    //get、getCachedValueAndTimeInStore从cache和_evictedCheckedOutValues同时查找
+    //getCacheInfo获取cache和_evictedCheckedOutValues上所有KV
+    //注意这几个的区别
     std::pair<ValueHandle, Time> getCachedValueAndTimeInStore(const KeyType& key) {
         stdx::lock_guard<Latch> lg(_mutex);
         std::shared_ptr<StoredValue> storedValue;
@@ -517,6 +551,7 @@ public:
      * predicate.
      */
     template <typename Pred>
+    //如果predicate返回true，则invalidate，参考test
     void invalidateIf(Pred predicate) {
         LockGuardWithPostUnlockDestructor guard(_mutex);
         for (auto it = _cache.begin(); it != _cache.end();) {
@@ -557,11 +592,14 @@ public:
         std::vector<CachedItemInfo> ret;
         ret.reserve(_cache.size() + _evictedCheckedOutValues.size());
 
+        //value.use_count()代表std::weak_ptr<StoredValue>引用的次数
+        //cache中的
         for (const auto& kv : _cache) {
             const auto& value = kv.second;
             ret.push_back({kv.first, value.use_count() - 1});
         }
 
+        //超过cache list队列限制而被淘汰的KV
         for (const auto& kv : _evictedCheckedOutValues) {
             if (auto value = kv.second.lock())
                 ret.push_back({kv.first, value.use_count() - 1});
@@ -637,6 +675,7 @@ private:
             guard->releasePtr(std::move(evictedValue));
         }
 
+        //从_evictedCheckedOutValues中清理掉
         _evictedCheckedOutValues.erase(itEvicted);
     }
 
@@ -653,7 +692,8 @@ private:
     using EvictedCheckedOutValuesMap = stdx::
         unordered_map<Key, std::weak_ptr<StoredValue>, LruKeyHasher<Key>, LruKeyComparator<Key>>;
 
-    //参考insertOrAssign
+    //参考insertOrAssign  超过cache队列list容忍的maxsize限制的旧KV会进入该淘汰队列
+    //从map清理参考_invalidat，写入map参考insertOrAssign
     EvictedCheckedOutValuesMap _evictedCheckedOutValues;
 
     // An always-incrementing counter from which to obtain "identities" for each value stored in the

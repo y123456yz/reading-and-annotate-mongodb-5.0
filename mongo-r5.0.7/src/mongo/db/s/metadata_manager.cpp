@@ -72,6 +72,7 @@ bool metadataOverlapsRange(const boost::optional<CollectionMetadata>& metadata,
 
 }  // namespace
 
+//MetadataManager::getActiveMetadata
 class RangePreserver : public ScopedCollectionDescription::Impl {
 public:
     // Must be called locked with the MetadataManager's _managerLock
