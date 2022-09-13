@@ -73,7 +73,7 @@ StringData LogSeverity::toStringData() const {
 StringData LogSeverity::toStringDataCompact() const {
 
     if ((*this == LogSeverity::Log()) || (*this == LogSeverity::Info()))
-        return "I"_sd;
+        return "I"_sd; //Log() === Debug(0), level为0或者info则日志输出"s":"I"
 
     if ((_severity > 0) && (_severity <= kMaxDebugLevel))
         return kDebugLevelStrings[_severity - 1];

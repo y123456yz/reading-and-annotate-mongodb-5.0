@@ -41,6 +41,9 @@ class ChunkWritesTracker;
 /**
  * Represents a cache entry for a single Chunk. Owned by a RoutingTableHistory.
  */
+/* config.chunks表
+{ "_id" : ObjectId("626949abe075acd4f783ea8a"), "uuid" : UUID("3efa7fd4-1637-4776-90c3-e7467d1a6e96"), "min" : { "_id" : { "id" : UUID("04800000-0000-0000-0000-000000000000") } }, "max" : { "_id" : { "id" : UUID("04c00000-0000-0000-0000-000000000000") } }, "shard" : "mongodb_5.0_shard2", "lastmod" : Timestamp(20, 0), "history" : [ { "validAfter" : Timestamp(1651067720, 4), "shard" : "mongodb_5.0_shard2" }, { "validAfter" : Timestamp(1651067307, 1), "shard" : "mongodb_5.0_shard1" } ] }
+*/
 class ChunkInfo {
 public:
     explicit ChunkInfo(const ChunkType& from);
@@ -126,6 +129,7 @@ private:
 
     const ChunkVersion _lastmod;
 
+    //config.chunks表中的"history" : [ { "validAfter" : Timestamp(1651067720, 4), "shard" : "mongodb_5.0_shard2" }, { "validAfter" : Timestamp(1651067307, 1), "shard" : "mongodb_5.0_shard1" } ] }
     const std::vector<ChunkHistory> _history;
 
     // Indicates whether this chunk should be treated as jumbo and not attempted to be moved or

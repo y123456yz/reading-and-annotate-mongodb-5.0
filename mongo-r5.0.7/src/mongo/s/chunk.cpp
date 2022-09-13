@@ -65,6 +65,7 @@ ChunkInfo::ChunkInfo(ChunkRange range,
       _jumbo(jumbo),
       _writesTracker(writesTracker) {}
 
+//该chunk当前所属分片信息
 const ShardId& ChunkInfo::getShardIdAt(const boost::optional<Timestamp>& ts) const {
     // This chunk was refreshed from FCV 3.6 config server so it doesn't have history
     if (_history.empty()) {
@@ -110,6 +111,7 @@ bool ChunkInfo::containsKey(const BSONObj& shardKey) const {
     return getMin().woCompare(shardKey) <= 0 && shardKey.woCompare(getMax()) < 0;
 }
 
+//RoutingTableHistory::toString()   ChunkMap::toBSON()
 std::string ChunkInfo::toString() const {
     return str::stream() << ChunkType::shard() << ": " << _shardId << ", " << ChunkType::lastmod()
                          << ": " << _lastmod.toString() << ", " << _range.toString();

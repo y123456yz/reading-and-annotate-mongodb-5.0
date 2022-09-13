@@ -138,15 +138,17 @@ TEST(ReadThroughCacheTest, StandaloneValueHandle) {
 TEST_F(ReadThroughCacheTest, FetchInvalidateAndRefetch) {
     auto fnTest = [&](auto cache) {
         for (int i = 1; i <= 3; i++) {
-			//ReadThroughCache::acquireAsync
+			//ReadThroughCache::acquire(CacheCausalConsistency::kLatestCached)->ReadThroughCache::acquireAsync
             auto value = cache.acquire(_opCtx, "TestKey");
             ASSERT(value);
             ASSERT_EQ(100 * i, value->counter);
             ASSERT_EQ(i, cache.countLookups);
 
+			//CacheCausalConsistency::kLatestCached可以获取到上面acquire写入的KV，所以这类直接返回了上面的value，不会执行lookfn
             ASSERT(cache.acquire(_opCtx, "TestKey"));
             ASSERT_EQ(i, cache.countLookups);
 
+			//ReadThroughCache::invalidate  直接从cache中清理掉
             cache.invalidate("TestKey");
         }
     };
@@ -178,6 +180,7 @@ TEST_F(ReadThroughCacheTest, FetchInvalidateAndRefetch) {
 TEST_F(ReadThroughCacheTest, FetchInvalidateKeyAndRefetch) {
     auto fnTest = [&](auto cache) {
         for (int i = 1; i <= 3; i++) {
+			//ReadThroughCache::acquire(CacheCausalConsistency::kLatestCached)->ReadThroughCache::acquireAsync
             auto value = cache.acquire(_opCtx, "TestKey");
             ASSERT(value);
             ASSERT_EQ(100 * i, value->counter);
@@ -186,6 +189,7 @@ TEST_F(ReadThroughCacheTest, FetchInvalidateKeyAndRefetch) {
             ASSERT(cache.acquire(_opCtx, "TestKey"));
             ASSERT_EQ(i, cache.countLookups);
 
+			//ReadThroughCache::invalidateKeyIf  直接从cache中清理掉
             cache.invalidateKeyIf([](const std::string& key) { return key == "TestKey"; });
         }
     };
@@ -361,9 +365,13 @@ TEST_F(ReadThroughCacheTest, CausalConsistency) {
     ASSERT_EQ(10, cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown)->counter);
 
     nextToReturn.emplace(CachedValue(20), Timestamp(20));
+	//ReadThroughCache::advanceTimeInStore  advanceTimeInStore后源key会失效，就valid=false
     ASSERT(cache.advanceTimeInStore("TestKey", Timestamp(20)));
+	//ReadThroughCache::acquire kLatestCached方式可以获取cazhe中的value, 即上面的value 10
     ASSERT_EQ(10, cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestCached)->counter);
     ASSERT(!cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestCached).isValid());
+	
+	//kLatestKnown方式无法获取小于Timestamp(20)的value，因此重新生成新的value加入cache
     ASSERT_EQ(20, cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown)->counter);
     ASSERT(cache.acquire(_opCtx, "TestKey", CacheCausalConsistency::kLatestKnown).isValid());
 }
@@ -456,6 +464,7 @@ TEST_F(ReadThroughCacheAsyncTest, AcquireObservesOperationContextDeadline) {
                 threadPool,
                 1,
                 [&](OperationContext*, const std::string& key, const Cache::ValueHandle&) {
+                	//线程池只有1个线程，countDownAndWait永远不会返回，只会超时
                     lookupStartedBarrier.countDownAndWait();
                     completeLookupBarrier.countDownAndWait();
                     return Cache::LookupResult(CachedValue(5));
@@ -475,11 +484,13 @@ TEST_F(ReadThroughCacheAsyncTest, AcquireObservesOperationContextDeadline) {
 
         opCtx->setDeadlineAfterNowBy(Milliseconds{5}, ErrorCodes::ExceededTimeLimit);
         ASSERT_THROWS_CODE(
+			//ReadThroughCache::acquire
             cache.acquire(opCtx, "TestKey"), DBException, ErrorCodes::ExceededTimeLimit);
-
+		//这里线程计数-1
         lookupStartedBarrier.countDownAndWait();
     }
 
+	//这里线程计数-1
     completeLookupBarrier.countDownAndWait();
 
     {
@@ -487,6 +498,7 @@ TEST_F(ReadThroughCacheAsyncTest, AcquireObservesOperationContextDeadline) {
         const ServiceContext::UniqueOperationContext opCtxHolder{tc->makeOperationContext()};
         OperationContext* const opCtx{opCtxHolder.get()};
 
+		//acquire会调用look fn，减到0，所以这里不会阻塞，不会超时
         auto value = cache.acquire(opCtx, "TestKey");
         ASSERT(value);
         ASSERT_EQ(5, value->counter);
@@ -530,14 +542,16 @@ TEST_F(ReadThroughCacheAsyncTest, InvalidateReissuesLookup) {
     });
 
     // Kick off the first lookup, which will block
+    //注意这里是acquireAsync异步调度，不是acquire同步调度，所以这里直接会返回
     auto future = cache.acquireAsync("TestKey");
     ASSERT(!future.isReady());
 
     // Wait for the first lookup attempt to start and invalidate it before letting it proceed
-    lookupStartedBarriers[0].countDownAndWait();
+    lookupStartedBarriers[0].countDownAndWait(); //执行完该wait，lookup fn中的lookupStartedBarriers[0].countDownAndWait()会返回
     ASSERT_EQ(1, countLookups.load());
     cache.invalidate("TestKey");
     ASSERT(!future.isReady());
+	 //执行完该wait，lookup fn中的completeLookupBarriers[0].countDownAndWait()会返回
     completeLookupBarriers[0].countDownAndWait();  // Lets lookup attempt 1 proceed
     ASSERT(!future.isReady());
 
@@ -712,17 +726,21 @@ TEST_F(ReadThroughCacheAsyncTest, AcquireAsyncAndAdvanceTimeInterleave) {
     ASSERT_EQ(100, futureAtTS100.get()->counter);
     ASSERT(futureAtTS100.get().isValid());
 
+	//InvalidatingLRUCache::advanceTimeInStore,   storedValue->timeInStore(time100) < newTimeInStore(time150), 则timeInStore赋值为新的150
+	// 同时源(CachedValue(100), Timestamp(100))的valid失效
     ASSERT(cache.advanceTimeInStore("TestKey", Timestamp(150)));
     auto futureAtTS150 = cache.acquireAsync("TestKey", CacheCausalConsistency::kLatestKnown);
     ASSERT(!futureAtTS100.get().isValid());
     ASSERT(!futureAtTS150.isReady());
 
+	//Timestamp(250)对应InvalidatingLRUCache中的timeInStore
     ASSERT(cache.advanceTimeInStore("TestKey", Timestamp(250)));
     auto futureAtTS250 = cache.acquireAsync("TestKey", CacheCausalConsistency::kLatestKnown);
     ASSERT(!futureAtTS100.get().isValid());
     ASSERT(!futureAtTS150.isReady());
     ASSERT(!futureAtTS250.isReady());
 
+	//Timestamp(150)对应InProgressLookup中的_minTimeInStore
     nextToReturn.emplace(CachedValue(150), Timestamp(150));
     threadPool.runMostRecentTask();
     ASSERT_EQ(150, futureAtTS150.get()->counter);

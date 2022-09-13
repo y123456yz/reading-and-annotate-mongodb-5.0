@@ -145,6 +145,7 @@ ScopedCollectionDescription CollectionShardingRuntime::getCollectionDescription(
     return {std::move(optMetadata)};
 }
 
+//onShardVersionMismatch mongod版本检查不匹配的时候通过这里获取缓存的meta得到路由信息
 boost::optional<CollectionMetadata> CollectionShardingRuntime::getCurrentMetadataIfKnown() {
     auto optMetadata = _getCurrentMetadataIfKnown(boost::none);
     if (!optMetadata)
@@ -152,6 +153,8 @@ boost::optional<CollectionMetadata> CollectionShardingRuntime::getCurrentMetadat
     return optMetadata->get();
 }
 
+//mongod读路由版本检查AutoGetCollectionForReadCommandBase->checkShardVersionOrThrow，
+//mongod写路由版本检查assertCanWrite_inlock->checkShardVersionOrThrow
 //checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow
 void CollectionShardingRuntime::checkShardVersionOrThrow(OperationContext* opCtx) {
     (void)_getMetadataWithVersionCheckAt(opCtx, boost::none);
@@ -306,6 +309,7 @@ Status CollectionShardingRuntime::waitForClean(OperationContext* opCtx,
     MONGO_UNREACHABLE;
 }
 
+//获取mongod对应路由shardversion通过该接口获取
 std::shared_ptr<ScopedCollectionDescription::Impl>
 CollectionShardingRuntime::_getCurrentMetadataIfKnown(
     const boost::optional<LogicalTime>& atClusterTime) {
@@ -337,8 +341,17 @@ CollectionShardingRuntime::_getCurrentMetadataIfKnown(
 //db version不匹配流程: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 
 
-//shard version版本检查，参考ExecCommandDatabase::_commandExec() 中会使用
+//shard version版本检查，如果版本检查不一致，则重新获取路由信息，然后重新执行SQL，参考ExecCommandDatabase::_commandExec() 中会使用
 
+
+//mongod读路由版本检查AutoGetCollectionForReadCommandBase->checkShardVersionOrThrow，
+//mongod写路由版本检查assertCanWrite_inlock->checkShardVersionOrThrow
+
+//注意CollectionShardingRuntime::_getMetadataWithVersionCheckAt和onShardVersionMismatch的区别，都会进行版本检查
+//_getMetadataWithVersionCheckAt作用是请求进来后进行路由版本检查，路由检查不通过才会继续走onShardVersionMismatch确定了路由刷新
+
+//非事务mongos获取到客户端请求后流程:ClusterFind::runQuery->getCollectionRoutingInfoForTxnCmd->CatalogCache::getCollectionRoutingInfo 调用该接口获取路由信息
+//mongod获取路由实际上最终调用的是_getCurrentMetadataIfKnown，从缓存的_metadata获取
 std::shared_ptr<ScopedCollectionDescription::Impl>
 CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
     OperationContext* opCtx, const boost::optional<mongo::LogicalTime>& atClusterTime) {
@@ -355,7 +368,7 @@ CollectionShardingRuntime::_getMetadataWithVersionCheckAt(
 
     auto csrLock = CSRLock::lockShared(opCtx, this);
 
-	//这是本地缓存的metadata
+	//这是本地缓存的_metadata中获取
     auto optCurrentMetadata = _getCurrentMetadataIfKnown(atClusterTime);
     uassert(StaleConfigInfo(
                 _nss, receivedShardVersion, boost::none, ShardingState::get(opCtx)->shardId()),

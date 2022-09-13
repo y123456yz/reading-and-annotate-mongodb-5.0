@@ -1691,6 +1691,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                     _refreshedDatabase = true;
                     if (!opCtx->isContinuingMultiDocumentTransaction()) {
                         _resetLockerStateAfterShardingUpdate(opCtx);
+						//路由有问题，获取到最新路由信息后，重新执行SQL
                         return _commandExec();
                     }
                 }
@@ -1713,6 +1714,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                         _refreshedCollection = true;
                         if (!opCtx->isContinuingMultiDocumentTransaction()) {
                             _resetLockerStateAfterShardingUpdate(opCtx);
+							//路由有问题，获取到最新路由信息后，重新执行SQL
                             return _commandExec();
                         }
                     }
@@ -1740,6 +1742,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                     _refreshedCatalogCache = true;
                     if (!opCtx->isContinuingMultiDocumentTransaction()) {
                         _resetLockerStateAfterShardingUpdate(opCtx);
+						//路由有问题，获取到最新路由信息后，重新执行SQL
                         return _commandExec();
                     }
                 }

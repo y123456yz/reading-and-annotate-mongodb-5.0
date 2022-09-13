@@ -253,6 +253,8 @@ public:
      *  The returned value may be invalid by the time the caller gets to access it, if 'invalidate'
      *  is called for 'key'.
      */ //CatalogCache::_getCollectionRoutingInfoAt  
+    //异步获取KV，如果kv存在则直接返回，如果不存在则启用异步线程调用look fn，同时直接返回sharedFutureToReturn
+    // lookup fn在其他线程执行，不会阻塞sharedFutureToReturn返回，只会在外层sharedFutureToReturn.get的时候阻塞等待
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>&& std::is_constructible_v<Key, KeyType>)
     SharedSemiFuture<ValueHandle> acquireAsync( 
@@ -272,7 +274,8 @@ public:
 
         // Join an in-progress lookup if one has already been scheduled
         if (auto it = _inProgressLookups.find(key); it != _inProgressLookups.end())
-            //InProgressLookup::addWaiter
+            //InProgressLookup::addWaiter，代表前面已经有其他请求在获取该key的value值，例如前面的请求
+            // 获取路由信息还没返回，这里就需要等待
             return it->second->addWaiter(ul);
 
         // Schedule an asynchronous lookup for the key
@@ -306,6 +309,7 @@ public:
         OperationContext* opCtx,
         const KeyType& key,
         CacheCausalConsistency causalConsistency = CacheCausalConsistency::kLatestCached) {
+        //acquireAsync+get,get需要等待获取到结果
         return acquireAsync(key, causalConsistency).get(opCtx);
     }
 
@@ -386,6 +390,7 @@ public:
         stdx::lock_guard lg(_mutex);
         if (auto it = _inProgressLookups.find(key); it != _inProgressLookups.end())
             it->second->advanceTimeInStore(lg, newTime);
+            //InvalidatingLRUCache::advanceTimeInStore
         return _cache.advanceTimeInStore(key, newTime);
     }
 
@@ -414,6 +419,8 @@ public:
     template <typename Pred>
     void invalidateKeyIf(const Pred& predicate) {
         stdx::lock_guard lg(_mutex);
+        //先把正在获取该KV的现成cancel掉
+        //yang todo xxxxx ?????????????????? 这里是不是还应该从_inProgressLookups.erase(it);清理掉?
         for (auto& entry : _inProgressLookups) {
             if (predicate(entry.first))
                 entry.second->invalidateAndCancelCurrentLookupRound(lg);
@@ -490,8 +497,10 @@ private:
         invariant(it != _inProgressLookups.end());
         //InProgressLookup类型
         auto& inProgressLookup = *it->second;
+        //流程后面的asyncLookupRound中执行_lookupFn后重新进入该函数中，最终将调用_lookupFn中获得的LookupResult加入_cache
         auto [promisesToSet, result, mustDoAnotherLoop] = [&] {
             // The thread pool is shutting down, so terminate the loop
+            //例如下面的invalidateAndCancelCurrentLookupRound
             if (ErrorCodes::isCancellationError(sw.getStatus()))
                 return std::make_tuple(inProgressLookup.getAllPromisesOnError(ul),
                                        StatusWith<ValueHandle>(sw.getStatus()),
@@ -514,21 +523,27 @@ private:
             // Value (or boost::none) was returned by lookup and there was no concurrent call to
             // 'invalidate'. Place the value on the cache and return the necessary promises to
             // signal (those which are waiting for time < time at the store).
+
+            ////调用_lookupFn获取到的LookupResult赋值给resulte
             auto& result = sw.getValue();
             auto promisesToSet = inProgressLookup.getPromisesLessThanTime(ul, result.t);
 
             auto valueHandleToSet = [&] {
-                if (result.v) {
+                if (result.v) {//inProgressLookup获取到新的value
+                    //更新新的KV
                     ValueHandle valueHandle(
                         _cache.insertOrAssignAndGet(key, {std::move(*result.v), _now()}, result.t));
                     // In the case that 'key' was not present in the store up to this lookup's
                     // completion, it is possible that concurrent callers advanced the time in store
                     // further than what was returned by the lookup. Because of this, the time in
                     // the cache must be synchronised with that of the InProgressLookup.
+
+                    //有可能inProgressLookup.minTimeInStore(ul)比_now()大，这时候上面insertOrAssignAndGet的invalid无效了
                     _cache.advanceTimeInStore(key, inProgressLookup.minTimeInStore(ul));
                     return valueHandle;
                 }
 
+                //否则失效旧的KV
                 _cache.invalidate(key);
                 return ValueHandle();
             }();
@@ -538,6 +553,7 @@ private:
                                    !inProgressLookup.empty(ul));
         }();
 
+        //通过asyncLookupRound调用_lookupFn中获得的LookupResult加入_cache后，加入到_cache后，则需要清理_inProgressLookups中的inProgressLookup
         if (!mustDoAnotherLoop)
             _inProgressLookups.erase(it);
         ul.unlock();
@@ -555,8 +571,11 @@ private:
                 p->setFrom(result);
         }
 
+        
         return mustDoAnotherLoop
+            //调用_lookupFn获取LookupResult
             ? inProgressLookup.asyncLookupRound().onCompletion(
+                  ////调用_lookupFn获取LookupResult后，重新执行_doLookupWhileNotValid
                   [this, key = std::move(key)](auto sw) mutable {
                       return _doLookupWhileNotValid(std::move(key), std::move(sw));
                   })
@@ -564,6 +583,7 @@ private:
     }
 
     // Blocking function which will be invoked to retrieve entries from the backing store
+    //asyncLookupRound中运行
     const LookupFn _lookupFn;
 
     // Contains all the currently cached keys. This structure is self-synchronising and doesn't
@@ -581,7 +601,8 @@ private:
     //
     // This map is protected by '_mutex'.
     //acquireAsync中写入k:InProgressLookup
-    InProgressLookupsMap _inProgressLookups;
+    //代表当前正在异步获取InProgressLookup的请求
+    InProgressLookupsMap _inProgressLookups; 
 };
 
 /**
@@ -608,6 +629,7 @@ private:
  *      inProgress.signalWaiters(result);
  * }
  */
+//ReadThroughCache._inProgressLookups为该类型
 //ReadThroughCache::acquireAsync中构造使用
 template <typename Key, typename Value, typename Time>
 class ReadThroughCache<Key, Value, Time>::InProgressLookup {
@@ -618,7 +640,7 @@ public:
           _cachedValue(std::move(cachedValue)),
           _minTimeInStore(std::move(minTimeInStore)) {}
 
-    //_doLookupWhileNotValid
+    //_doLookupWhileNotValid,调用_lookupFn获取LookupResult
     Future<LookupResult> asyncLookupRound() {
         auto [promise, future] = makePromiseFuture<LookupResult>();
 
@@ -649,6 +671,7 @@ public:
         return it->second->getFuture();
     }
 
+    //_doLookupWhileNotValid中调用
     Time minTimeInStore(WithLock) const {
         return _minTimeInStore;
     }
@@ -657,6 +680,7 @@ public:
         return _valid;
     }
 
+    //从_outstanding清理掉所有的成员加入到ret返回
     std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> getAllPromisesOnError(WithLock) {
         std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> ret;
         for (auto it = _outstanding.begin(); it != _outstanding.end();) {
@@ -666,6 +690,7 @@ public:
         return ret;
     }
 
+    //从_outstanding找出时间小于time的所有成员返回，同时从_outstanding清理掉时间小于time的成员
     std::vector<std::unique_ptr<SharedPromise<ValueHandle>>> getPromisesLessThanTime(WithLock,
                                                                                      Time time) {
         invariant(_valid);
@@ -706,6 +731,7 @@ private:
     boost::optional<CancelToken> _cancelToken;
 
     ValueHandle _cachedValue;
+    //真正失效见_doLookupWhileNotValid
     Time _minTimeInStore;
 
     using TimeAndPromiseMap = std::map<Time, std::unique_ptr<SharedPromise<ValueHandle>>>;

@@ -190,7 +190,8 @@ void DatabaseShardingState::setDatabaseInfo(OperationContext* opCtx,
 
 //shard version版本检查见CollectionShardingRuntime::_getMetadataWithVersionCheckAt，db版本信息检查参考DatabaseShardingState::checkDbVersion  
 
-//db version版本检查，参考ExecCommandDatabase::_commandExec() 中会使用
+//shard version版本检查，如果版本检查不一致，则重新获取路由信息，然后重新执行SQL，参考ExecCommandDatabase::_commandExec() 中会使用
+
 void DatabaseShardingState::checkDbVersion(OperationContext* opCtx, DSSLock&) const {
     invariant(opCtx->lockState()->isLocked());
 

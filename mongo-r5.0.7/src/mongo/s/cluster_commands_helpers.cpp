@@ -690,6 +690,7 @@ bool appendEmptyResultSet(OperationContext* opCtx,
     return true;
 }
 
+////ClusterFind::runQuery->runQueryWithoutRetrying->getTargetedShardsForQuery
 std::set<ShardId> getTargetedShardsForQuery(boost::intrusive_ptr<ExpressionContext> expCtx,
                                             const ChunkManager& cm,
                                             const BSONObj& query,
@@ -726,6 +727,7 @@ std::vector<std::pair<ShardId, BSONObj>> getVersionedRequestsForTargetedShards(
     return requests;
 }
 
+//ClusterFind::runQuery->getCollectionRoutingInfoForTxnCmd
 StatusWith<ChunkManager> getCollectionRoutingInfoForTxnCmd(OperationContext* opCtx,
                                                            const NamespaceString& nss) {
     auto catalogCache = Grid::get(opCtx)->catalogCache();
@@ -741,10 +743,12 @@ StatusWith<ChunkManager> getCollectionRoutingInfoForTxnCmd(OperationContext* opC
     // concern.
     auto txnRouter = TransactionRouter::get(opCtx);
     if (!txnRouter || !txnRouter.mustUseAtClusterTime()) {
+		//CatalogCache::getCollectionRoutingInfo 非事务普通转发走这里
         return catalogCache->getCollectionRoutingInfo(opCtx, nss);
     }
 
     auto atClusterTime = txnRouter.getSelectedAtClusterTime();
+	//CatalogCache::getCollectionRoutingInfoAt  事务相关请求走这里
     return catalogCache->getCollectionRoutingInfoAt(opCtx, nss, atClusterTime.asTimestamp());
 }
 

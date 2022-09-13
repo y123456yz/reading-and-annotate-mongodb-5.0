@@ -413,7 +413,10 @@ bool BalancerSettingsType::isTimeInBalancingWindow(const boost::posix_time::ptim
         if ((now >= *_activeWindowStart) && (now <= *_activeWindowStop)) {
             return true;
         }
-    } else if (*_activeWindowStart > *_activeWindowStop) {
+    } else if (*_activeWindowStart > *_activeWindowStop) {// { start : "23£º00", stop : "2£º00" } } ÀýÈçÕâÑùÅäÖÃ
+/*
+db.settings.update(   { _id: "balancer" },   { $set: { activeWindow : { start : "23£º00", stop : "2£º00" } } },   { upsert: true })
+*/
         if ((now >= *_activeWindowStart) || (now <= *_activeWindowStop)) {
             return true;
         }

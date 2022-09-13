@@ -191,6 +191,7 @@ SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext
                 }
             }
 
+			//获取最新路由信息
             auto currentMetadata = forceGetCurrentMetadata(opCtx, nss);
 
 			//resharding情况进入
@@ -230,6 +231,9 @@ SharedSemiFuture<void> recoverRefreshShardVersion(ServiceContext* serviceContext
 //ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
 
 //例如建新表等，则会收到_flushRoutingTableCacheUpdates则触发调用onShardVersionMismatch从config server获取最新路由信息
+
+//注意CollectionShardingRuntime::_getMetadataWithVersionCheckAt和onShardVersionMismatch的区别，都会进行版本检查
+//_getMetadataWithVersionCheckAt作用是请求进来后进行路由版本检查，路由检查不通过才会继续走onShardVersionMismatch路由刷新
 void onShardVersionMismatch(OperationContext* opCtx,
                             const NamespaceString& nss,
                             boost::optional<ChunkVersion> shardVersionReceived) {
@@ -278,13 +282,16 @@ void onShardVersionMismatch(OperationContext* opCtx,
             continue;
         }
 
+		//mongod路由检查是直接获取缓存的metadata
         auto metadata = csr->getCurrentMetadataIfKnown();
-        if (metadata) {
+        if (metadata) {//再次检查版本号
             // Check if the current shard version is fresh enough
             if (shardVersionReceived) {
                 const auto currentShardVersion = metadata->getShardVersion();
                 // Don't need to remotely reload if we're in the same epoch and the requested
                 // version is smaller than the known one. This means that the remote side is behind.
+                
+                //注意CollectionShardingRuntime::_getMetadataWithVersionCheckAt和onShardVersionMismatch的区别，都会进行版本检查
                 if (shardVersionReceived->isOlderThan(currentShardVersion) ||
                     (*shardVersionReceived == currentShardVersion &&
                      shardVersionReceived->getTimestamp() == currentShardVersion.getTimestamp())) {
@@ -312,6 +319,7 @@ void onShardVersionMismatch(OperationContext* opCtx,
     inRecoverOrRefresh->get(opCtx);
 }
 
+//shardCollection->ScopedShardVersionCriticalSection::ScopedShardVersionCriticalSection
 ScopedShardVersionCriticalSection::ScopedShardVersionCriticalSection(OperationContext* opCtx,
                                                                      NamespaceString nss,
                                                                      BSONObj reason)
@@ -465,6 +473,7 @@ CollectionMetadata forceGetCurrentMetadata(OperationContext* opCtx, const Namesp
     }
 }
 
+//refreshAllShards  shardCollection->ScopedShardVersionCriticalSection::ScopedShardVersionCriticalSection
 ChunkVersion forceShardFilteringMetadataRefresh(OperationContext* opCtx,
                                                 const NamespaceString& nss) {
     invariant(!opCtx->lockState()->isLocked());

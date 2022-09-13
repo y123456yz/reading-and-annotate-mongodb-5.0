@@ -172,6 +172,7 @@ bool ChunkRange::covers(ChunkRange const& other) const {
     return le(_minKey, other._minKey) && le(other._maxKey, _maxKey);
 }
 
+//求2个有交集的chunk的并集，如[100-200> + [80,150>=[80-200>    [100-200> + [110,150>=[100-200>
 boost::optional<ChunkRange> ChunkRange::overlapWith(ChunkRange const& other) const {
     auto le = [](auto const& a, auto const& b) { return a.woCompare(b) <= 0; };
     if (le(other._maxKey, _minKey) || le(_maxKey, other._minKey)) {
@@ -181,6 +182,7 @@ boost::optional<ChunkRange> ChunkRange::overlapWith(ChunkRange const& other) con
                       le(_maxKey, other._maxKey) ? _maxKey : other._maxKey);
 }
 
+//两个chunk有重叠  如有交集:[100-200> 与 [80,150>   包含: [100-200> 与 [110,15>都满足条件
 bool ChunkRange::overlaps(const ChunkRange& other) const {
     return _minKey.woCompare(other._maxKey) < 0 && _maxKey.woCompare(other._minKey) > 0;
 }

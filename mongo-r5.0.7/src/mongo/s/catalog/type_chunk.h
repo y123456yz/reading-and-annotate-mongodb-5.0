@@ -191,6 +191,7 @@ public:
  * server's collection schema, but that will be future work when the new schema is stable and there
  * is time to do the extra work, as well as handle the backwards compatibility issues it poses.
  */
+//std::vector<std::shared_ptr<ChunkInfo>> flatten函数完成ChunkType到chunkInfo的转换
 class ChunkType {
 public:
     // Name of the chunks collection in the config server.

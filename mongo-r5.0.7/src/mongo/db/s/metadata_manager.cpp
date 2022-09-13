@@ -123,6 +123,7 @@ MetadataManager::MetadataManager(ServiceContext* serviceContext,
     _metadata.emplace_back(std::make_shared<CollectionMetadataTracker>(std::move(initialMetadata)));
 }
 
+//CollectionShardingRuntime::_getCurrentMetadataIfKnown
 std::shared_ptr<ScopedCollectionDescription::Impl> MetadataManager::getActiveMetadata(
     const boost::optional<LogicalTime>& atClusterTime) {
     stdx::lock_guard<Latch> lg(_managerLock);
@@ -133,6 +134,7 @@ std::shared_ptr<ScopedCollectionDescription::Impl> MetadataManager::getActiveMet
     // We don't keep routing history for unsharded collections, so if the collection is unsharded
     // just return the active metadata
     if (!atClusterTime || !activeMetadata->isSharded()) {
+		//注意这里是std::make_shared
         return std::make_shared<RangePreserver>(
             lg, shared_from_this(), std::move(activeMetadataTracker));
     }
@@ -149,6 +151,7 @@ std::shared_ptr<ScopedCollectionDescription::Impl> MetadataManager::getActiveMet
         CollectionMetadata _metadata;
     };
 
+	//注意这里是std::make_shared
     return std::make_shared<MetadataAtTimestamp>(CollectionMetadata(
         ChunkManager::makeAtTime(*activeMetadata->getChunkManager(), atClusterTime->asTimestamp()),
         activeMetadata->shardId()));

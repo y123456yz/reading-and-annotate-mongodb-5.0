@@ -247,6 +247,7 @@ void updateNumHostsTargetedMetrics(OperationContext* opCtx,
         NumHostsTargetedMetrics::QueryType::kFindCmd, targetType);
 }
 
+//ClusterFind::runQuery->runQueryWithoutRetrying
 CursorId runQueryWithoutRetrying(OperationContext* opCtx,
                                  const CanonicalQuery& query,
                                  const ReadPreferenceSetting& readPref,

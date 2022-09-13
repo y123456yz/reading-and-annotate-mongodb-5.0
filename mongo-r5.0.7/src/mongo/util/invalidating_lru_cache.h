@@ -479,6 +479,7 @@ public:
      */
     TEMPLATE(typename KeyType)
     REQUIRES(IsComparable<KeyType>)
+    //例如路由刷新对应的是ComparableChunkVersion，参考getCollectionRoutingInfoWithRefresh advance
     bool advanceTimeInStore(const KeyType& key, const Time& newTimeInStore) {
         stdx::lock_guard<Latch> lg(_mutex);
         std::shared_ptr<StoredValue> storedValue;
@@ -494,6 +495,7 @@ public:
             return true;
         }
 
+        //该storedValue失效
         if (storedValue->timeInStore < newTimeInStore) {
             storedValue->timeInStore = newTimeInStore;
             storedValue->isValid.store(false);
@@ -501,6 +503,7 @@ public:
         }
 
         //advanceTimeInStore的newTimeInStore必须大于timeInStore，否则返回false
+        //newTimeInStore <= timeInStore 则啥也不做，直接返回
         return false;
     }
 

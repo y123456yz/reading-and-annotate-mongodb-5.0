@@ -66,10 +66,12 @@ const int kMaxInconsistentRoutingInfoRefreshAttempts = 3;
 const int kDatabaseCacheSize = 10000;
 const int kCollectionCacheSize = 10000;
 
+//只有gEnableFinerGrainedCatalogCacheRefresh为true时，该参数才有效
+//生效使用见CatalogCache::_getCollectionRoutingInfoAt，cache中获取还是需要advancetime检查
 const OperationContext::Decoration<bool> operationShouldBlockBehindCatalogCacheRefresh =
     OperationContext::declareDecoration<bool>();
 
-//因为CatalogCache::_getCollectionRoutingInfoAt获取表路由信息引起阻塞
+//checkAndRecordOperationBlockedByRefresh中使用，用于统计阻塞的请求
 const OperationContext::Decoration<bool> operationBlockedBehindCatalogCacheRefresh =
     OperationContext::declareDecoration<bool>();
 
@@ -153,6 +155,20 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
     const NamespaceString& nss,
     boost::optional<Timestamp> atClusterTime,
     bool allowLocks) {
+
+	if(allowLocks)
+    	LOGV2_FOR_CATALOG_REFRESH(
+                    4947103,
+                    2,
+                    "_getCollectionRoutingInfoAt allowLocks=true",
+                    "namespace"_attr = nss);
+	else
+    	LOGV2_FOR_CATALOG_REFRESH(
+                    4947103,
+                    2,
+                    "_getCollectionRoutingInfoAt allowLocks=false",
+                    "namespace"_attr = nss);
+
     if (!allowLocks) {
         invariant(!opCtx->lockState() || !opCtx->lockState()->isLocked(),
                   "Do not hold a lock while refreshing the catalog cache. Doing so would "
@@ -177,9 +193,12 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
 
         const auto dbInfo = std::move(swDbInfo.getValue());
 
+		//gEnableFinerGrainedCatalogCacheRefresh=true 并且 block标记为false，则读kLatestCached
         const auto cacheConsistency = gEnableFinerGrainedCatalogCacheRefresh &&
                 !operationShouldBlockBehindCatalogCacheRefresh(opCtx)
+            //直接读取cache中的，即使advance time失效
             ? CacheCausalConsistency::kLatestCached
+            //需要进行advance time检查
             : CacheCausalConsistency::kLatestKnown;
 
 
@@ -214,7 +233,8 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
 
         while (true) {
             try {
-				//等待获取路由结束
+				//等待获取路由结束 RoutingTableHistoryValueHandle类型
+				//
                 auto collEntry = collEntryFuture.get(opCtx);
 				//刷路由的总时间
                 _stats.totalRefreshWaitTimeMicros.addAndFetch(t.micros());
@@ -256,6 +276,7 @@ StatusWith<ChunkManager> CatalogCache::_getCollectionRoutingInfoAt(
 //xxxxxxxxxxxxxxxx
 
 //获取表最新的路由信息
+//非事务mongos获取到客户端请求后流程:ClusterFind::runQuery->getCollectionRoutingInfoForTxnCmd调用该接口获取路由信息
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfo(OperationContext* opCtx,
                                                                 const NamespaceString& nss,
                                                                 bool allowLocks) {
@@ -263,6 +284,7 @@ StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfo(OperationContext
 }
 
 //获取表最新的路由信息
+//事务mongos获取到客户端请求后流程:ClusterFind::runQuery->getCollectionRoutingInfoForTxnCmd调用该接口获取路由信息
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfoAt(OperationContext* opCtx,
                                                                   const NamespaceString& nss,
                                                                   Timestamp atClusterTime) {
@@ -289,12 +311,14 @@ StatusWith<CachedDatabaseInfo> CatalogCache::getDatabaseWithRefresh(OperationCon
 //forceGetCurrentMetadata
 StatusWith<ChunkManager> CatalogCache::getCollectionRoutingInfoWithRefresh(
     OperationContext* opCtx, const NamespaceString& nss) {
+    //advance处理后，cache中的value会失效，这时候就需要进行强制路由刷新
     _collectionCache.advanceTimeInStore(
         nss, ComparableChunkVersion::makeComparableChunkVersionForForcedRefresh());
     setOperationShouldBlockBehindCatalogCacheRefresh(opCtx, true);
     return getCollectionRoutingInfo(opCtx, nss);
 }
 
+//getCollectionRoutingInfoWithRefresh会强制刷路由，getShardedCollectionRoutingInfo只从缓存获取，没有才会刷路由
 ChunkManager CatalogCache::getShardedCollectionRoutingInfo(OperationContext* opCtx,
                                                            const NamespaceString& nss) {
     auto cm = uassertStatusOK(getCollectionRoutingInfo(opCtx, nss));
@@ -579,10 +603,12 @@ CatalogCache::CollectionCache::CollectionCache(ServiceContext* service,
     : ReadThroughCache(_mutex,
                        service,
                        threadPool,
-                        //threadPool线程池中调度该函数运行
+                        //threadPool线程池中调度该函数运行,
+                        //look fn定义参考ReadThroughCacheLookup::Fn，在asyncLookupRound运行
                        [this](OperationContext* opCtx,
                               const NamespaceString& nss,
                               const ValueHandle& collectionHistory,
+                              //对应_minTimeInStore，参考asyncLookupRound
                               const ComparableChunkVersion& previousChunkVersion) {
                            //获取key(nss)对应value(RoutingTableHistory)
                            return _lookupCollection(
@@ -631,11 +657,13 @@ void CatalogCache::CollectionCache::Stats::report(BSONObjBuilder* builder) const
 
 //CatalogCache::_getCollectionRoutingInfoAt 调度走到这里
 //CatalogCache::_getCollectionRoutingInfoAt->CatalogCache::CollectionCache::CollectionCache  
-//获取最新路由信息
+//获取最新路由信息,真正运行在_doLookupWhileNotValid
 CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_lookupCollection(
     OperationContext* opCtx,
     const NamespaceString& nss,
+    //cache中缓存的该nss对应的route信息
     const RoutingTableHistoryValueHandle& existingHistory,
+    //该参数赋值见_collectionCache.advanceTimeInStore
     const ComparableChunkVersion& previousVersion) {
     const bool isIncremental(existingHistory && existingHistory->optRt);
 	//refresh计数
@@ -664,7 +692,8 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
 		//从config server获取最新变化的路由信息
 		//ShardServerCatalogCacheLoader::getChunksSince
         auto collectionAndChunks = _catalogCacheLoader.getChunksSince(nss, lookupVersion).get();
-                                  
+
+		//返回值为RoutingTableHistory类型
         auto newRoutingHistory = [&] {
             // If we have routing info already and it's for the same collection epoch, we're
             // updating. Otherwise, we're making a whole new routing table.
@@ -689,7 +718,7 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                 }
             }
 
-			//第一次获取路由，直接构造一个全量的
+			
             auto defaultCollator = [&]() -> std::unique_ptr<CollatorInterface> {
                 if (!collectionAndChunks.defaultCollation.isEmpty()) {
                     // The collation should have been validated upon collection creation
@@ -700,6 +729,7 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                 return nullptr;
             }();
 
+			//第一次获取路由，直接构造一个全量的
             return RoutingTableHistory::makeNew(nss,
                                                 collectionAndChunks.uuid,
                                                 KeyPattern(collectionAndChunks.shardKeyPattern),
@@ -713,6 +743,7 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                                                 collectionAndChunks.changedChunks);
         }();
 
+		//RoutingTableHistory::setAllShardsRefreshed
         newRoutingHistory.setAllShardsRefreshed();
 
         // Check that the shards all match with what is on the config server
@@ -724,8 +755,11 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
                                                      << " references shard which does not exist");
         }
 
+		//RoutingTableHistory::getVersion()
+		// Max version across all chunks ,chunkmap中最大的版本号
         const ChunkVersion newVersion = newRoutingHistory.getVersion();
 
+		// Max version across all chunks ,chunkmap中最大的版本号
         newComparableVersion.setChunkVersion(newVersion);
 
         if (isIncremental && existingHistory->optRt->getVersion() == newVersion) {
@@ -748,6 +782,8 @@ CatalogCache::CollectionCache::LookupResult CatalogCache::CollectionCache::_look
 
 		//获取最新coll route完成
         LOGV2_FOR_CATALOG_REFRESH(4619901,
+        						  //0: Log() === Debug(0), level为0或者info则日志输出"s":"I"
+        						  //1: Log() === Debug(1), level为1则日志输出"s":"D1"
                                   isIncremental || newComparableVersion != previousVersion ? 0 : 1,
                                   "Refreshed cached collection",
                                   "namespace"_attr = nss,

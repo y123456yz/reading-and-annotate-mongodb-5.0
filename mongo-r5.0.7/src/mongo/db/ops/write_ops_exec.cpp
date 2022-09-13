@@ -217,6 +217,7 @@ private:
     repl::OpTime _opTimeAtLastOpStart;
 };
 
+//mongod读路由版本检查AutoGetCollectionForReadCommandBase，mongod写路由版本检查assertCanWrite_inlock
 void assertCanWrite_inlock(OperationContext* opCtx, const NamespaceString& ns) {
     uassert(ErrorCodes::PrimarySteppedDown,
             str::stream() << "Not primary while writing to " << ns.ns(),

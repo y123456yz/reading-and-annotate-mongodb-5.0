@@ -64,6 +64,8 @@ void checkAllElementsAreOfType(BSONType type, const BSONObj& o) {
             allElementsAreOfType(type, o));
 }
 
+//ChunkMap::appendChunk   flatten
+//如果chunks数组中最后一个chunk与chunk有交叠并且chunk比chunks最后一个版本更高，则直接替换最后一个chunk；否则直接追加到数组最后
 void appendChunkTo(std::vector<std::shared_ptr<ChunkInfo>>& chunks,
                    const std::shared_ptr<ChunkInfo>& chunk) {
     if (!chunks.empty() && chunk->getRange().overlaps(chunks.back()->getRange())) {
@@ -84,21 +86,26 @@ void appendChunkTo(std::vector<std::shared_ptr<ChunkInfo>>& chunks,
 // precomputed KeyString representations of the maximum bounds, this function implements the same
 // algorithm by reverse sorting the chunks by the maximum before processing but then must
 // reverse the resulting collection before it is returned.
+
+//RoutingTableHistory::makeUpdated
 std::vector<std::shared_ptr<ChunkInfo>> flatten(const std::vector<ChunkType>& changedChunks) {
     if (changedChunks.empty())
         return std::vector<std::shared_ptr<ChunkInfo>>();
 
+	//ChunkType转换为ChunkInfo存储到临时changedChunkInfo这个容器中
     std::vector<std::shared_ptr<ChunkInfo>> changedChunkInfos(changedChunks.size());
     std::transform(changedChunks.begin(),
                    changedChunks.end(),
                    changedChunkInfos.begin(),
                    [](const auto& c) { return std::make_shared<ChunkInfo>(c); });
 
+	//按照maxkey从小到大排序
     std::sort(changedChunkInfos.begin(), changedChunkInfos.end(), [](const auto& a, const auto& b) {
         return a->getMaxKeyString() > b->getMaxKeyString();
     });
 
     std::vector<std::shared_ptr<ChunkInfo>> flattened;
+	//提前分配空间
     flattened.reserve(changedChunkInfos.size());
     flattened.push_back(changedChunkInfos[0]);
 
@@ -106,6 +113,7 @@ std::vector<std::shared_ptr<ChunkInfo>> flatten(const std::vector<ChunkType>& ch
         appendChunkTo(flattened, changedChunkInfos[i]);
     }
 
+	//这里做转换的目的是啥? chunk多会不会很慢呢
     std::reverse(flattened.begin(), flattened.end());
 
     return flattened;
@@ -113,7 +121,10 @@ std::vector<std::shared_ptr<ChunkInfo>> flatten(const std::vector<ChunkType>& ch
 
 }  // namespace
 
+//RoutingTableHistory::RoutingTableHistory
+//根据ChunkMap，记录chunk manager表对应表在每个分片的shardversion
 ShardVersionMap ChunkMap::constructShardVersionMap() const {
+	//using ShardVersionMap = stdx::unordered_map<ShardId, ShardVersionTargetingInfo, ShardId::Hasher>;
     ShardVersionMap shardVersions;
     ChunkVector::const_iterator current = _chunkMap.cbegin();
 
@@ -121,12 +132,17 @@ ShardVersionMap ChunkMap::constructShardVersionMap() const {
     boost::optional<BSONObj> lastMax = boost::none;
 
     while (current != _chunkMap.cend()) {
+		//ChunkInfo类型
         const auto& firstChunkInRange = *current;
+		//该chunk当前所属shard
         const auto& currentRangeShardId = firstChunkInRange->getShardIdAt(boost::none);
 
         // Tracks the max shard version for the shard on which the current range will reside
+        //ShardVersionMap::find
         auto shardVersionIt = shardVersions.find(currentRangeShardId);
+		//shardVersions中没有该shard的信息，没有则根据currentRangeShardId和_collectionVersion构造
         if (shardVersionIt == shardVersions.end()) {
+			//每个shard都会有一个shardVersion
             shardVersionIt = shardVersions
                                  .emplace(std::piecewise_construct,
                                           std::forward_as_tuple(currentRangeShardId),
@@ -135,19 +151,25 @@ ShardVersionMap ChunkMap::constructShardVersionMap() const {
                                  .first;
         }
 
+		//获取该chunk对应的shardVersion
         auto& maxShardVersion = shardVersionIt->second.shardVersion;
 
         current =
+			//从current位置开始查找_chunkMap中第一个不属于currentRangeShardId这个shard的chunk
             std::find_if(current,
                          _chunkMap.cend(),
+                         //一直遍历直到返回true,find_if才会返回
                          [&currentRangeShardId, &maxShardVersion](const auto& currentChunk) {
                              if (currentChunk->getShardIdAt(boost::none) != currentRangeShardId)
                                  return true;
 
+							 //该shard有更高的版本号获取该chunkd的版本号赋值给maxShardVersion
                              if (maxShardVersion.isOlderThan(currentChunk->getLastmod()))
                                  maxShardVersion = currentChunk->getLastmod();
 
-                             return false;
+							 //如果是几个连续的chunk属于同一个shard，这里是不是应该检查一下上一个chunk的max和下一个chunk的min
+							 //例如下面在遇到不通shard的chunk连接处做了检查，但是同一个shard的连接处这里没有
+							 return false;
                          });
 
         const auto rangeLast = *std::prev(current);
@@ -184,6 +206,7 @@ ShardVersionMap ChunkMap::constructShardVersionMap() const {
         invariant(firstMin.is_initialized());
         invariant(lastMax.is_initialized());
 
+		//chunk map中的最小min必须为MinKey，最大max必须为MaxKey
         checkAllElementsAreOfType(MinKey, firstMin.get());
         checkAllElementsAreOfType(MaxKey, lastMax.get());
     }
@@ -202,6 +225,10 @@ void ChunkMap::appendChunk(const std::shared_ptr<ChunkInfo>& chunk) {
     }
 }
 
+//mongos转发查找路由会调用该接口 ClusterFind::runQuery->runQueryWithoutRetrying->getTargetedShardsForQuery
+// ->ChunkManager::getShardIdsForQuery->ChunkManager::findIntersectingChunk
+
+//返回ChunkInfo，里面会包含该chunk对应的分片，mongos再外层ChunkManager::getShardIdsForQuery就可以通过ChunkInfo获取到对应shard，然后转发到对应shard
 std::shared_ptr<ChunkInfo> ChunkMap::findIntersectingChunk(const BSONObj& shardKey) const {
     const auto it = _findIntersectingChunk(shardKey);
 
@@ -211,6 +238,7 @@ std::shared_ptr<ChunkInfo> ChunkMap::findIntersectingChunk(const BSONObj& shardK
     return std::shared_ptr<ChunkInfo>();
 }
 
+//epoch必须相同，并且version版本号必须大于chunk对应版本号
 void validateChunk(const std::shared_ptr<ChunkInfo>& chunk, const ChunkVersion& version) {
     uassert(ErrorCodes::ConflictingOperationInProgress,
             str::stream() << "Changed chunk " << chunk->toString()
@@ -220,6 +248,8 @@ void validateChunk(const std::shared_ptr<ChunkInfo>& chunk, const ChunkVersion& 
     invariant(version.isOlderOrEqualThan(chunk->getLastmod()));
 }
 
+//RoutingTableHistory::makeUpdated
+//根据_chunkMap和changedChunks，生成一个新的ChunkMap，这里面有很多拷贝操作 
 ChunkMap ChunkMap::createMerged(
     const std::vector<std::shared_ptr<ChunkInfo>>& changedChunks) const {
     size_t chunkMapIndex = 0;
@@ -231,6 +261,7 @@ ChunkMap ChunkMap::createMerged(
     while (chunkMapIndex < _chunkMap.size() || changedChunkIndex < changedChunks.size()) {
         if (chunkMapIndex >= _chunkMap.size()) {
             validateChunk(changedChunks[changedChunkIndex], getVersion());
+			//注意是append到零时的updatedChunkMap
             updatedChunkMap.appendChunk(changedChunks[changedChunkIndex++]);
             continue;
         }
@@ -252,6 +283,7 @@ ChunkMap ChunkMap::createMerged(
 
             validateChunk(changedChunk, getVersion());
             updatedChunkMap.appendChunk(changedChunk);
+			//注意这里chunkMapIndex没有自增，所以spilitat引起的chunk拆分，连续两个chunk会追加到一起
         } else {
             updatedChunkMap.appendChunk(_chunkMap[chunkMapIndex++]);
         }
@@ -269,6 +301,7 @@ BSONObj ChunkMap::toBSON() const {
     {
         BSONArrayBuilder arrayBuilder(builder.subarrayStart("chunks"_sd));
         for (const auto& chunk : _chunkMap) {
+			//ChunkInfo::toString
             arrayBuilder.append(chunk->toString());
         }
     }
@@ -276,10 +309,14 @@ BSONObj ChunkMap::toBSON() const {
     return builder.obj();
 }
 
+//ChunkMap::findIntersectingChunk  _overlappingBounds
+//通过二分查找获取shardKey所在的chunk
 ChunkMap::ChunkVector::const_iterator ChunkMap::_findIntersectingChunk(const BSONObj& shardKey,
+																	   //默认bool isMaxInclusive = true
                                                                        bool isMaxInclusive) const {
     auto shardKeyString = ShardKeyPattern::toKeyString(shardKey);
 
+	//参考https://tool.oschina.net/uploads/apidocs/cpp/en/cpp/algorithm/lower_boundhtml.html 源码实现
     if (!isMaxInclusive) {
         return std::lower_bound(_chunkMap.begin(),
                                 _chunkMap.end(),
@@ -321,7 +358,7 @@ RoutingTableHistory::RoutingTableHistory(
     boost::optional<TypeCollectionTimeseriesFields> timeseriesFields,
     boost::optional<TypeCollectionReshardingFields> reshardingFields,
     bool allowMigrations,
-    ChunkMap chunkMap)
+    ChunkMap chunkMap) 
     : _nss(std::move(nss)),
       _uuid(uuid),
       _shardKeyPattern(shardKeyPattern),
@@ -342,6 +379,8 @@ void RoutingTableHistory::setShardStale(const ShardId& shardId) {
     }
 }
 
+//CatalogCache::CollectionCache::_lookupCollection
+//每个分片都会记录该表在所有分片上的shardversion是否有效
 void RoutingTableHistory::setAllShardsRefreshed() {
     if (gEnableFinerGrainedCatalogCacheRefresh) {
         for (auto& [shard, targetingInfo] : _shardVersions) {
@@ -350,6 +389,8 @@ void RoutingTableHistory::setAllShardsRefreshed() {
     }
 }
 
+//mongos转发查找路由会调用该接口 ClusterFind::runQuery->runQueryWithoutRetrying->getTargetedShardsForQuery
+// ->ChunkManager::getShardIdsForQuery->ChunkManager::findIntersectingChunk
 Chunk ChunkManager::findIntersectingChunk(const BSONObj& shardKey,
                                           const BSONObj& collation,
                                           bool bypassIsFieldHashedCheck) const {
@@ -376,6 +417,7 @@ Chunk ChunkManager::findIntersectingChunk(const BSONObj& shardKey,
         }
     }
 
+	//std::shared_ptr<ChunkInfo> findIntersectingChunk->ChunkMap::findIntersectingChunk
     auto chunkInfo = _rt->optRt->findIntersectingChunk(shardKey);
 
     uassert(ErrorCodes::ShardKeyNotFound,
@@ -399,9 +441,11 @@ bool ChunkManager::keyBelongsToShard(const BSONObj& shardKey, const ShardId& sha
     return chunkInfo->getShardIdAt(_clusterTime) == shardId;
 }
 
+//mongos转发查找路由会调用该接口 ClusterFind::runQuery->runQueryWithoutRetrying->getTargetedShardsForQuery->ChunkManager::getShardIdsForQuery
 void ChunkManager::getShardIdsForQuery(boost::intrusive_ptr<ExpressionContext> expCtx,
                                        const BSONObj& query,
                                        const BSONObj& collation,
+                                       //请求转发到那个shard通过这里记录下来
                                        std::set<ShardId>* shardIds) const {
     auto findCommand = std::make_unique<FindCommandRequest>(_rt->optRt->nss());
     findCommand->setFilter(query.getOwned());
@@ -692,7 +736,9 @@ bool ChunkManager::allowMigrations() const {
     return _rt->optRt->allowMigrations();
 }
 
+//GetShardVersion::run
 std::string ChunkManager::toString() const {
+	//RoutingTableHistory::toString
     return _rt->optRt ? _rt->optRt->toString() : "UNSHARDED";
 }
 
@@ -703,6 +749,7 @@ bool RoutingTableHistory::compatibleWith(const RoutingTableHistory& other,
     return other.getVersion(shardName) == getVersion(shardName);
 }
 
+//获取chunk manager对应的表在某个分片的shardversion
 ChunkVersion RoutingTableHistory::_getVersion(const ShardId& shardName,
                                               bool throwOnStaleShard) const {
     auto it = _shardVersions.find(shardName);
@@ -713,6 +760,7 @@ ChunkVersion RoutingTableHistory::_getVersion(const ShardId& shardName,
         return ChunkVersion(0, 0, collVersion.epoch(), collVersion.getTimestamp());
     }
 
+	//gEnableFinerGrainedCatalogCacheRefresh为true则需要检查isStale有效性
     if (throwOnStaleShard && gEnableFinerGrainedCatalogCacheRefresh) {
         uassert(ShardInvalidatedForTargetingInfo(_nss),
                 "shard has been marked stale",
@@ -722,6 +770,8 @@ ChunkVersion RoutingTableHistory::_getVersion(const ShardId& shardName,
     return it->second.shardVersion;
 }
 
+//获取chunk manager对应的表在某个分片的shardversion
+//RoutingTableHistory::compatibleWith
 ChunkVersion RoutingTableHistory::getVersion(const ShardId& shardName) const {
     return _getVersion(shardName, true);
 }
@@ -730,12 +780,15 @@ ChunkVersion RoutingTableHistory::getVersionForLogging(const ShardId& shardName)
     return _getVersion(shardName, false);
 }
 
+//GetShardVersion::run->ChunkManager::toString()
+//db.runCommand({getShardVersion: "wukong.actions", fullMetadata: true})的时候可以输出所有的
 std::string RoutingTableHistory::toString() const {
     StringBuilder sb;
     sb << "RoutingTableHistory: " << _nss.ns() << " key: " << _shardKeyPattern.toString() << '\n';
 
     sb << "Chunks:\n";
     _chunkMap.forEach([&sb](const auto& chunk) {
+		//ChunkInfo::toString
         sb << "\t" << chunk->toString() << '\n';
         return true;
     });
@@ -747,6 +800,7 @@ std::string RoutingTableHistory::toString() const {
 
     return sb.str();
 }
+
 
 RoutingTableHistory RoutingTableHistory::makeNew(
     NamespaceString nss,
@@ -780,6 +834,7 @@ RoutingTableHistory RoutingTableHistory::makeUpdated(
     bool allowMigrations,
     const std::vector<ChunkType>& changedChunks) const {
     auto changedChunkInfos = flatten(changedChunks);
+	//根据_chunkMap和changedChunks，生成一个新的ChunkMap，这里面有很多拷贝操作 
     auto chunkMap = _chunkMap.createMerged(changedChunkInfos);
 
     // Only update the same collection.
@@ -843,10 +898,14 @@ ComparableChunkVersion ComparableChunkVersion::makeComparableChunkVersionForForc
                                   _epochDisambiguatingSequenceNumSource.fetchAndAdd(1));
 }
 
+//// Max version across all chunks ,chunkmap中最大的版本号
+//CatalogCache::CollectionCache::_lookupCollection
 void ComparableChunkVersion::setChunkVersion(const ChunkVersion& version) {
     _chunkVersion = version;
 }
 
+//日志里面记录
+//{"t":{"$date":"2022-08-16T11:24:41.847+08:00"},"s":"I",  "c":"SH_REFR",  "id":4619901, "ctx":"CatalogCache-62840","msg":"Refreshed cached collection","attr":{"namespace":"config.system.sessions","lookupSinceVersion":{"0":{"$timestamp":{"t":513,"i":1}},"1":{"$oid":"626949ab21072b82d9ffd463"},"2":{"$timestamp":{"t":1651067307,"i":1}}},"newVersion":{"chunkVersion":{"0":{"$timestamp":{"t":513,"i":1}},"1":{"$oid":"626949ab21072b82d9ffd463"},"2":{"$timestamp":{"t":1651067307,"i":1}}},"forcedRefreshSequenceNum":4514025,"epochDisambiguatingSequenceNum":4482196},"timeInStore":{"chunkVersion":"None","forcedRefreshSequenceNum":4514024,"epochDisambiguatingSequenceNum":4482195},"durationMillis":3}}
 BSONObj ComparableChunkVersion::toBSONForLogging() const {
     BSONObjBuilder builder;
     if (_chunkVersion)

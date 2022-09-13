@@ -45,6 +45,7 @@
 namespace mongo {
 namespace {
 
+//mongos通过getCollectionRoutingInfo获取版本信息,mongod通过getCurrentMetadataIfKnown获取版本信息
 class GetShardVersion : public BasicCommand {
 public:
     GetShardVersion() : BasicCommand("getShardVersion") {}
@@ -79,7 +80,8 @@ public:
     std::string parseNs(const std::string& dbname, const BSONObj& cmdObj) const override {
         return CommandHelpers::parseNsFullyQualified(cmdObj);
     }
-
+	
+	//mongos通过getCollectionRoutingInfo获取版本信息,mongod通过getCurrentMetadataIfKnown获取版本信息
     bool run(OperationContext* opCtx,
              const std::string& dbname,
              const BSONObj& cmdObj,
@@ -109,6 +111,7 @@ public:
 			//如果启用了分片，则类型为CollectionMetadata::getShardVersion    
             result.appendTimestamp("global", metadata.getShardVersion().toLong());
 
+			//如果chunk过多，这里会不会超过BSONObjMaxUserSize 16M限制,是不是应该参考GetShardVersion::run做下限制
             if (cmdObj["fullMetadata"].trueValue()) {
                 BSONObjBuilder metadataBuilder(result.subobjStart("metadata"));
                 if (metadata.isSharded()) {

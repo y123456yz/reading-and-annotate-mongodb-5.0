@@ -73,6 +73,8 @@ struct ShardVersionTargetingInfo {
 
 //RoutingTableHistory._chunkMap,记录分片表所有得chunks信息
 //RoutingTableHistory._shardVersions,记录分片表某个分片上面得shardversion信息
+
+//该表在某个分片上面的shardversion
 using ShardVersionMap = stdx::unordered_map<ShardId, ShardVersionTargetingInfo, ShardId::Hasher>;
 
 /**
@@ -89,9 +91,10 @@ using ShardVersionMap = stdx::unordered_map<ShardId, ShardVersionTargetingInfo, 
 //RoutingTableHistory._shardVersions,记录分片表某个分片上面得shardversion信息
 class ChunkMap {
     // Vector of chunks ordered by max key.
-    using ChunkVector = std::vector<std::shared_ptr<ChunkInfo>>;
+    using ChunkVector =std::vector<std::shared_ptr<ChunkInfo>>;
 
 public:
+    //makeUpdatedReplacingTimestamp  RoutingTableHistory::makeNew
     explicit ChunkMap(OID epoch,
                       const boost::optional<Timestamp>& timestamp,
                       size_t initialCapacity = 0)
@@ -103,6 +106,7 @@ public:
         return _chunkMap.size();
     }
 
+    // Max version across all chunks ,chunkmap中最大的版本号
     ChunkVersion getVersion() const {
         return _collectionVersion;
     }
@@ -148,6 +152,7 @@ private:
     ChunkVector _chunkMap;
 
     // Max version across all chunks
+    //该表所有分片中最大的chunk version，也就是_chunkMap中最大的version，赋值参考ChunkMap::appendChunk
     ChunkVersion _collectionVersion;
 
     // Represents the timestamp present in config.collections for this ChunkMap.
@@ -257,6 +262,7 @@ public:
      */
     void setAllShardsRefreshed();
 
+    // Max version across all chunks ,chunkmap中最大的版本号
     ChunkVersion getVersion() const {
         return _chunkMap.getVersion();
     }
@@ -397,6 +403,7 @@ private:
     // shard does not exist, it will not have an entry in the map.
     // Note: this declaration must not be moved before _chunkMap since it is initialized by using
     // the _chunkMap instance.
+    //该表在某个分片上面的shardversion，//根据ChunkMap，记录chunk manager表对应表在每个分片的shardversion，参考ChunkMap::constructShardVersionMap()
     ShardVersionMap _shardVersions;
 };
 
@@ -487,6 +494,7 @@ private:
 
     uint64_t _forcedRefreshSequenceNum{0};
 
+    //chunkmap中最大的版本号
     boost::optional<ChunkVersion> _chunkVersion;
 
     // Locally incremented sequence number that allows to compare two colection versions with

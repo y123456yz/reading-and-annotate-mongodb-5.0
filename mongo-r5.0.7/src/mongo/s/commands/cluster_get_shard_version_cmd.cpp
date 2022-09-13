@@ -44,6 +44,7 @@
 namespace mongo {
 namespace {
 	//db.runCommand({getShardVersion: "wukong.actions", fullMetadata: false});注意可能部分mongo shell默认是true，会全量打印每条chunk路由，会影响性能
+//mongos通过getCollectionRoutingInfo获取版本信息,mongod通过getCurrentMetadataIfKnown获取版本信息
 class GetShardVersion : public BasicCommand {
 public:
     GetShardVersion() : BasicCommand("getShardVersion", "getshardversion") {}
@@ -85,6 +86,7 @@ public:
         return nss.ns();
     }
 
+	////mongos通过getCollectionRoutingInfo获取版本信息,mongod通过getCurrentMetadataIfKnown获取版本信息
     bool run(OperationContext* opCtx,
              const std::string& dbname,
              const BSONObj& cmdObj,
@@ -111,9 +113,11 @@ public:
                 BSONArrayBuilder chunksArrBuilder;
                 bool exceedsSizeLimit = false;
 
+				//这里会记录所有chunk到日志目录
                 LOGV2(22753,
                       "Routing info requested by getShardVersion: {routingInfo}",
                       "Routing info requested by getShardVersion",
+                      //ChunkManager::toString->RoutingTableHistory::toString
                       "routingInfo"_attr = redact(cm.toString()));
 
                 cm.forEachChunk([&](const auto& chunk) {
@@ -130,6 +134,7 @@ public:
                     return true;
                 });
 
+				//如果不超过16M，则直接bson返回
                 if (!exceedsSizeLimit) {
                     result.append("chunks", chunksArrBuilder.arr());
                 }
