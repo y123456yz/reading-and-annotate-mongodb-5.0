@@ -73,6 +73,10 @@ CachedPlanStage::CachedPlanStage(ExpressionContext* expCtx,
     _children.emplace_back(std::move(root));
 }
 
+//MultiPlanStage::pickBestPlan: 用于前期多个候选索引的评分
+//CachedPlanStage::pickBestPlan: 决定是否需要replan
+
+//确定是否需要replan
 Status CachedPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     // Adds the amount of time taken by pickBestPlan() to executionTimeMillis. There's lots of
     // execution work that happens here, so this is needed for the time accounting to
@@ -88,13 +92,17 @@ Status CachedPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     ON_BLOCK_EXIT([this] { releaseAllIndicesRequirement(); });
 
     // If we work this many times during the trial period, then we will replan the
-    // query from scratch.
+    // query from scratch.  internalQueryCacheEvictionRatio默认10，
+    //_decisionWorks重启的时候最少10000，或者表中文档数量的0.3
+    //_decisionWorks也就是db.yyz1.getPlanCache().list()获取到的works
     size_t maxWorksBeforeReplan =
         static_cast<size_t>(internalQueryCacheEvictionRatio * _decisionWorks);
 
     // The trial period ends without replanning if the cached plan produces this many results.
+    //默认101条 internalQueryPlanEvaluationMaxResults
     size_t numResults = trial_period::getTrialPeriodNumToReturn(*_canonicalQuery);
 
+	//下面的循环最多扫maxWorksBeforeReplan条数据，从这么多条数据中是否可以找出numResults
     for (size_t i = 0; i < maxWorksBeforeReplan; ++i) {
         // Might need to yield between calls to work due to the timer elapsing.
         Status yieldStatus = tryYield(yieldPolicy);
@@ -132,11 +140,12 @@ Status CachedPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
             member->makeObjOwnedIfNeeded();
             _results.push(id);
 
+			//在期望的扫描中可以找到numResults条数据，说明不需要replan，外层直接使用缓存的plancache
             if (_results.size() >= numResults) {
                 // Once a plan returns enough results, stop working. There is no need to replan.
                 return Status::OK();
             }
-        } else if (PlanStage::IS_EOF == state) {
+        } else if (PlanStage::IS_EOF == state) {//按照这个索引到了eof，说明很快
             // Cached plan hit EOF quickly enough. No need to replan.
             return Status::OK();
         } else if (PlanStage::NEED_YIELD == state) {

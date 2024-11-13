@@ -50,6 +50,7 @@ std::unique_ptr<PlanScorer<PlanStageStats>> makePlanScorer();
  * holds indices into candidates ordered by score (winner in first element).
  *
  * Returns an error if there was an issue with plan ranking (e.g. there was no viable plan).
+ ∆¿∑÷º∆À„
  */
 template <typename PlanStageStatsType, typename PlanStageType, typename ResultType, typename Data>
 StatusWith<std::unique_ptr<PlanRankingDecision>> pickBestPlan(

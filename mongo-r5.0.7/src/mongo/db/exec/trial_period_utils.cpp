@@ -34,13 +34,16 @@
 #include "mongo/db/catalog/collection.h"
 
 namespace mongo::trial_period {
+//最少10000，或者表中文档数量的0.3
 size_t getTrialPeriodMaxWorks(OperationContext* opCtx, const CollectionPtr& collection) {
     // Run each plan some number of times. This number is at least as great as
     // 'internalQueryPlanEvaluationWorks', but may be larger for big collections.
+    //初始值10000
     size_t numWorks = internalQueryPlanEvaluationWorks.load();
     if (collection) {
         // For large collections, the number of works is set to be this fraction of the collection
         // size.
+        //internalQueryPlanEvaluationCollFraction默认值0.3
         double fraction = internalQueryPlanEvaluationCollFraction;
 
         numWorks = std::max(static_cast<size_t>(internalQueryPlanEvaluationWorks.load()),

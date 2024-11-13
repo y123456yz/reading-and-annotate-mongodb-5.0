@@ -158,6 +158,8 @@ void MultiPlanStage::tryYield(PlanYieldPolicy* yieldPolicy) {
     }
 }
 
+//MultiPlanStage::pickBestPlan: 用于前期多个候选索引的评分
+//CachedPlanStage::pickBestPlan: 决定是否需要replan
 Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     // Adds the amount of time taken by pickBestPlan() to executionTimeMillis. There's lots of
     // execution work that happens here, so this is needed for the time accounting to
@@ -222,6 +224,41 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
 
     return Status::OK();
 }
+
+
+Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
+     ...........
+     //允许的最大扫描数据行数
+     size_t numWorks = trial_period::getTrialPeriodMaxWorks(opCtx(), collection());
+     //满足条件的数据行数，默认值101
+     size_t numResults = trial_period::getTrialPeriodNumToReturn(*_query);
+
+        for (size_t ix = 0; ix < numWorks; ++ix) {
+             //每个候选索引都work一次
+             for (size_t ix = 0; ix < _candidates.size(); ++ix) {
+                   auto& candidate = _candidates[ix];
+                   
+                   //根据这个候选索引访问一次底层数据
+                   state = candidate.root->work(&id);
+
+				   //这条数据满足条件
+			       if (PlanStage::ADVANCED == state) {
+				   	    //数组内容+1
+						candidate.results.push(id);
+						//数组中满足条件的数据有numResults，完成
+			            if (candidate.results.size() >= numResults) {
+			                doneWorking = true;
+			            }
+			        } else if (PlanStage::IS_EOF == state) {
+			        	//EOF，完成
+			            doneWorking = true;
+			        } else {
+
+					}
+             }
+        }
+}
+
 
 bool MultiPlanStage::workAllPlans(size_t numResults, PlanYieldPolicy* yieldPolicy) {
     bool doneWorking = false;

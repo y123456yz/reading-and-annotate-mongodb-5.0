@@ -75,6 +75,8 @@ enum StageType {
 
     STAGE_EOF,
 
+    //db.yyz1.find({}).sort({filed1:1}).sort({filed1:1}).limit(5) 类似这样的查询getPlanCache不会有"stage" : "FETCH"
+    //db.yyz1.find({aa:xxxx}) 这种都会走fetch
     STAGE_FETCH,
 
     // The two $geoNear impls imply a fetch+sort and must be stages.

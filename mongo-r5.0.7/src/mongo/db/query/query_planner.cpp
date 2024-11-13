@@ -700,6 +700,7 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
     std::vector<IndexEntry> relevantIndices;
 
     if (!hintedIndexEntry) {
+		//获取候选索引
         relevantIndices = QueryPlannerIXSelect::findRelevantIndices(fields, fullIndexList);
     } else {
         relevantIndices = fullIndexList;
