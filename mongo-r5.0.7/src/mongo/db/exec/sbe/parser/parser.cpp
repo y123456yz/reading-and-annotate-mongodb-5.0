@@ -685,6 +685,7 @@ void Parser::walkScan(AstQuery& ast) {
                                  ScanCallbacks{});
 }
 
+//Parser::walk中调用  
 void Parser::walkParallelScan(AstQuery& ast) {
     walkChildren(ast);
 

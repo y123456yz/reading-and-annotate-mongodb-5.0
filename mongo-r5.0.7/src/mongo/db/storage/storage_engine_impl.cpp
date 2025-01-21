@@ -76,7 +76,7 @@ const auto kCatalogLogLevel = logv2::LogSeverity::Debug(2);
 StorageEngineImpl::StorageEngineImpl(OperationContext* opCtx,
                                      std::unique_ptr<KVEngine> engine,
                                      StorageEngineOptions options)
-    : _engine(std::move(engine)),
+    : _engine(std::move(engine)), //对应WiredTigerKVEngine
       _options(std::move(options)),
       _dropPendingIdentReaper(_engine.get()),
       _minOfCheckpointAndOldestTimestampListener(

@@ -49,6 +49,7 @@ class OperationContext;
 class RecoveryUnit;
 class SnapshotManager;
 
+//WiredTigerKVEngine继承该类
 class KVEngine {
 public:
     /**

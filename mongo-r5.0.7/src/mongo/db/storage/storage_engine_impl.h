@@ -61,6 +61,7 @@ struct StorageEngineOptions {
     bool lockFileCreatedByUncleanShutdown = false;
 };
 
+//WiredTigerFactory中new一个该类
 class StorageEngineImpl final : public StorageEngineInterface, public StorageEngine {
 public:
     StorageEngineImpl(OperationContext* opCtx,
@@ -416,7 +417,8 @@ private:
     class RemoveDBChange;
 
     // This must be the first member so it is destroyed last.
-    std::unique_ptr<KVEngine> _engine;
+    //对应WiredTigerKVEngine，//WiredTigerFactory中new一个该类的时候赋值
+    std::unique_ptr<KVEngine> _engine; 
 
     const StorageEngineOptions _options;
 

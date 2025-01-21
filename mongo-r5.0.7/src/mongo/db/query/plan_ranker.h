@@ -74,6 +74,7 @@ void logFailedPlan(std::function<std::string()> planSummary);
  * All specific plan scorers should inherit from this scorer and provide methods to produce the plan
  * productivity factor, and the number of plan "advances", representing the number of documents
  * returned by the PlanStage tree.
+ //º∆À„∆¿∑÷
  */
 template <typename PlanStageStatsType>
 class PlanScorer {

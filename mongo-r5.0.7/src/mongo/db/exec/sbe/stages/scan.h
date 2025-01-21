@@ -138,6 +138,7 @@ private:
     ScanStats _specificStats;
 };
 
+//Parser::walkParallelScan中构造初始化该类
 class ParallelScanStage final : public PlanStage {
     struct Range {
         RecordId begin;
@@ -145,6 +146,8 @@ class ParallelScanStage final : public PlanStage {
     };
     struct ParallelState {
         Mutex mutex = MONGO_MAKE_LATCH("ParallelScanStage::ParallelState::mutex");
+        //把一个大表的数据按照wt支持的随机底层采样功能"next_random=true"，把一个大表分段为1024段存入ranges[]数组
+        //赋值参考ParallelScanStage::open
         std::vector<Range> ranges;
         AtomicWord<size_t> currentRange{0};
     };
@@ -197,6 +200,7 @@ protected:
 
 private:
     boost::optional<Record> nextRange();
+    //如果大表有分段，则nextRange() 中会赋值从0自增
     bool needsRange() const {
         return _currentRange == std::numeric_limits<std::size_t>::max();
     }
@@ -232,8 +236,10 @@ private:
 
     value::FieldAccessorMap _fieldAccessors;
     value::SlotAccessorMap _varAccessors;
-
+    
+    //ParallelScanStage::nextRange()中用于确定已使用的ranges[]段
     size_t _currentRange{std::numeric_limits<std::size_t>::max()};
+    //ParallelScanStage::nextRange()有序从ranges[]数组中获取一个
     Range _range;
 
     bool _open{false};

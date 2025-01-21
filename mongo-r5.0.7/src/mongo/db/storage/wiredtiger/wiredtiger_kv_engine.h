@@ -87,6 +87,7 @@ struct WiredTigerBackup {
     stdx::condition_variable wtBackupDupCursorCV;
 };
 
+//WiredTigerFactory::create new创建该类, StorageEngineImpl._engine类为该类型
 class WiredTigerKVEngine final : public KVEngine {
 public:
     static StringData kTableUriPrefix;

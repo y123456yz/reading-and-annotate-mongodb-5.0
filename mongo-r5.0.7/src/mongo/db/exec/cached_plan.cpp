@@ -73,6 +73,40 @@ CachedPlanStage::CachedPlanStage(ExpressionContext* expCtx,
     _children.emplace_back(std::move(root));
 }
 
+Status CachedPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
+
+    // If we work this many times during the trial period, then we will replan the
+    // query from scratch.  internalQueryCacheEvictionRatio默认10，
+    //_decisionWorks也就是db.yyz1.getPlanCache().list()获取到的works
+    size_t maxWorksBeforeReplan =
+        static_cast<size_t>(internalQueryCacheEvictionRatio * _decisionWorks);
+
+    //默认101条 internalQueryPlanEvaluationMaxResults
+    size_t numResults = trial_period::getTrialPeriodNumToReturn(*_canonicalQuery);
+
+	//下面的循环最多扫maxWorksBeforeReplan条数据，从这么多条数据中是否可以找出numResults
+    for (size_t i = 0; i < maxWorksBeforeReplan; ++i) {
+        ......
+        //根据候选索引获取一条数据	
+        state = child()->work(&id);
+
+        if (PlanStage::ADVANCED == state) {
+			//查找到了101条数据
+            if (_results.size() >= numResults) {
+                // Once a plan returns enough results, stop working. There is no need to replan.
+                return Status::OK();
+            }
+        } else if (PlanStage::IS_EOF == state) {//按照这个索引到了eof，说明很快
+            // Cached plan hit EOF quickly enough. No need to replan.
+            return Status::OK();
+        }
+    }
+
+	//如果循环maxWorksBeforeReplan次都没有找到101条满足条件的数据，则进行replan
+    return replan(......);
+}
+
+
 //MultiPlanStage::pickBestPlan: 用于前期多个候选索引的评分
 //CachedPlanStage::pickBestPlan: 决定是否需要replan
 

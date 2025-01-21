@@ -669,6 +669,7 @@ void ParallelScanStage::open(bool reOpen) {
         _coll = restoreCollection(_opCtx, _collName, _collUuid, _catalogEpoch);
     }
 
+    //把一个大表的数据按照wt支持的随机底层采样功能"next_random=true"，把一个大表分段为1024段存入ranges[]数组
     if (_coll) {
         {
             stdx::unique_lock lock(_state->mutex);
@@ -705,13 +706,19 @@ void ParallelScanStage::open(bool reOpen) {
     _open = true;
 }
 
+//ParallelScanStage::nextRange()中用于确定已使用的ranges[]段，配合ParallelScanStage::open阅读
+//根据range确认该断点行数据是否还在表中，如果在返回这行，该数据不在了则一般返回空
 boost::optional<Record> ParallelScanStage::nextRange() {
     invariant(_cursor);
     _currentRange = _state->currentRange.fetchAndAdd(1);
     if (_currentRange < _state->ranges.size()) {
         _range = _state->ranges[_currentRange];
 
-        return _range.begin.isNull() ? _cursor->next() : _cursor->seekExact(_range.begin);
+        return _range.begin.isNull() ?
+        //第一个断点前面的begin不确定，因此为NULL
+        _cursor->next() : 
+        //直接定位到指定_range.begin这行，有可能这行被删除了，则返回空
+        _cursor->seekExact(_range.begin);
     } else {
         return boost::none;
     }
@@ -733,9 +740,14 @@ PlanState ParallelScanStage::getNext() {
     boost::optional<Record> nextRecord;
 
     // Loop until we have a valid result or we return EOF.
+    //循环直到找到一条数据或者到了表的末尾
     do {
+        //没到一个新段，就需要needRange
         auto needRange = needsRange();
+        //根据range确认该分段点行数据是否还在表中或者已经到了表的末尾
         nextRecord = needRange ? nextRange() : _cursor->next();
+
+        //说明已经是最后一个分段末尾了，也就是获取到了表的末尾EOF, 只有分段情况并到了末尾才会进入这里，见nextRange()返回boost::none;
         if (!nextRecord) {
             if (_scanCallbacks.indexKeyCorruptionCheckCallback) {
                 tassert(5113711,
@@ -752,6 +764,9 @@ PlanState ParallelScanStage::getNext() {
             return trackPlanState(PlanState::IS_EOF);
         }
 
+        //走到这里说明是在nextRecord断点处分段的
+
+        //说明已经到了_range这个分段的末尾
         if (!_range.end.isNull() && nextRecord->id == _range.end) {
             setNeedsRange();
             nextRecord = boost::none;

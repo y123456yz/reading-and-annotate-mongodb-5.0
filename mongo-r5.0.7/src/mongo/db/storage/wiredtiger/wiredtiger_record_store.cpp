@@ -661,9 +661,12 @@ StatusWith<std::string> WiredTigerRecordStore::parseOptionsField(const BSONObj o
     return StatusWith<std::string>(ss.str());
 }
 
+//StandardWiredTigerRecordStore中使用
+//ParallelScanStage::open->WiredTigerRecordStore::getRandomCursor->StandardWiredTigerRecordStore::getRandomCursorWithOptions
 class WiredTigerRecordStore::RandomCursor final : public RecordCursor {
 public:
     RandomCursor(OperationContext* opCtx, const WiredTigerRecordStore& rs, StringData config)
+        //yang add todo xxxxxxxxxxxxxxxxxxxx  这里应该是next_random=true
         : _cursor(nullptr), _rs(&rs), _opCtx(opCtx), _config(config.toString() + ",next_random") {
         restore();
     }
@@ -1574,6 +1577,7 @@ StatusWith<RecordData> WiredTigerRecordStore::updateWithDamages(
     return RecordData(static_cast<const char*>(value.data), value.size).getOwned();
 }
 
+//ParallelScanStage::open
 std::unique_ptr<RecordCursor> WiredTigerRecordStore::getRandomCursor(
     OperationContext* opCtx) const {
     const char* extraConfig = "";
@@ -2090,6 +2094,7 @@ boost::optional<Record> WiredTigerRecordStoreCursorBase::next() {
     return {{id, {static_cast<const char*>(value.data), static_cast<int>(value.size)}}};
 }
 
+//直接快速定位到指定的行位置
 boost::optional<Record> WiredTigerRecordStoreCursorBase::seekExact(const RecordId& id) {
     invariant(_hasRestored);
     if (_forward && _oplogVisibleTs && id.getLong() > *_oplogVisibleTs) {
@@ -2326,6 +2331,7 @@ std::unique_ptr<SeekableRecordCursor> StandardWiredTigerRecordStore::getCursor(
     return std::make_unique<WiredTigerRecordStoreStandardCursor>(opCtx, *this, forward);
 }
 
+//ParallelScanStage::open->WiredTigerRecordStore::getRandomCursor->StandardWiredTigerRecordStore::getRandomCursorWithOptions
 std::unique_ptr<RecordCursor> StandardWiredTigerRecordStore::getRandomCursorWithOptions(
     OperationContext* opCtx, StringData extraConfig) const {
     return std::make_unique<RandomCursor>(opCtx, *this, extraConfig);

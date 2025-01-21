@@ -61,6 +61,7 @@
 namespace mongo {
 
 namespace {
+//registerWiredTiger接口中注册
 class WiredTigerFactory : public StorageEngine::Factory {
 public:
     virtual ~WiredTigerFactory() {}
@@ -100,6 +101,7 @@ public:
                               "RAM. See http://dochub.mongodb.org/core/faq-memory-diagnostics-wt");
             }
         }
+
         const bool ephemeral = false;
         auto kv =
             std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
