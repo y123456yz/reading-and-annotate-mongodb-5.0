@@ -235,6 +235,7 @@ bool WiredTigerSessionCache::isShuttingDown() {
     return _shuttingDown.load() & kShuttingDownMask;
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
 void WiredTigerSessionCache::waitUntilDurable(OperationContext* opCtx,
                                               Fsync syncType,
                                               UseJournalListener useListener) {
@@ -294,6 +295,8 @@ void WiredTigerSessionCache::waitUntilDurable(OperationContext* opCtx,
                 // startup recovery in the repl layer. Then report that timestamp as durable to the
                 // repl layer below after we have flushed in-memory data to disk.
                 // Note: only does a write if primary, otherwise just fetches the timestamp.
+
+                //ReplicationCoordinatorExternalStateImpl::getToken
                 token = journalListener->getToken(opCtx);
             }
 
@@ -322,6 +325,9 @@ void WiredTigerSessionCache::waitUntilDurable(OperationContext* opCtx,
         // recovery in the repl layer. Then report that timestamp as durable to the repl layer below
         // after we have flushed in-memory data to disk.
         // Note: only does a write if primary, otherwise just fetches the timestamp.
+        //JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken->ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+        //  journalFlusher线程会定期sync wal日志，然后会走到这里更新local库replset.oplogTruncateAfterPoint表中的内容，如果是主节点并返回表中的时间戳，从节点返回none
+        //  token返回值如果是主节点，返回的是从存储引擎通过"get=all_durable"获取的时间戳，从节点返回的是_lastAppliedWallTime
         token = journalListener->getToken(opCtx);
     }
 
@@ -345,7 +351,8 @@ void WiredTigerSessionCache::waitUntilDurable(OperationContext* opCtx,
     }
 
     // Use the journal when available, or a checkpoint otherwise.
-    if (_engine && _engine->isDurable()) {
+    if (_engine && _engine->isDurable()) {//wiredtiger默认走这里, 默认为true
+        //这里进行真正的日志sync刷盘
         invariantWTOK(_waitUntilDurableSession->log_flush(_waitUntilDurableSession, "sync=on"));
         LOGV2_DEBUG(22419, 4, "flushed journal");
     } else {
@@ -353,7 +360,8 @@ void WiredTigerSessionCache::waitUntilDurable(OperationContext* opCtx,
         LOGV2_DEBUG(22420, 4, "created checkpoint");
     }
 
-    if (token) {
+    if (token) {//主节点会进入这里
+    //如果是主节点，token是从存储引擎通过"get=all_durable"获取的时间戳，从节点是_lastAppliedWallTime
         journalListener->onDurable(token.get());
     }
 }

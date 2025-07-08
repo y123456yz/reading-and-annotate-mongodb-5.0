@@ -307,6 +307,7 @@ Status OpenReadTransactionParam::setFromString(const std::string& str) {
 
 StringData WiredTigerKVEngine::kTableUriPrefix = "table:"_sd;
 
+//WiredTigerFactory::create调用，
 WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
                                        const std::string& path,
                                        ClockSource* cs,
@@ -322,6 +323,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
       _canonicalName(canonicalName),
       _path(path),
       _sizeStorerSyncTracker(cs, 100000, Seconds(60)),
+      //"storage.journal.enabled"配置指定默认为true
       _durable(durable),
       _ephemeral(ephemeral),
       _inRepairMode(repair),
@@ -467,6 +469,7 @@ WiredTigerKVEngine::WiredTigerKVEngine(const std::string& canonicalName,
 
     {
         char buf[(2 * 8 /*bytes in hex*/) + 1 /*nul terminator*/];
+        //启动的时候通过get=recovery从wt中获取recovertimestamp, 见WiredTigerKVEngine::WiredTigerKVEngine
         invariantWTOK(_conn->query_timestamp(_conn, buf, "get=recovery"));
 
         std::uint64_t tmp;
@@ -627,16 +630,19 @@ void WiredTigerKVEngine::appendGlobalStats(BSONObjBuilder& b) {
  * | 4.2.6 (blessed by 4.4) |      3.3.0 |   4 |
  * |                  4.4.0 |     10.0.0 |   5 |
  */
+//wt通过这个接口检查数据版本: __wt_conn_compat_config例如db数据是4.0写的数据，但是我们通过5.0mongod启动，这里会因为版本检查不通过而报错
 void WiredTigerKVEngine::_openWiredTiger(const std::string& path, const std::string& wtOpenConfig) {
     // MongoDB 4.4 will always run in compatibility version 10.0.
     std::string configStr = wtOpenConfig + ",compatibility=(require_min=\"10.0.0\")";
     auto wtEventHandler = _eventHandler.getWtEventHandler();
 
     int ret = wiredtiger_open(path.c_str(), wtEventHandler, configStr.c_str(), &_conn);
-    if (!ret) {
+    if (!ret) {//5.0从这里返回
         _fileVersion = {WiredTigerFileVersion::StartupVersion::IS_44_FCV_44};
         return;
     }
+
+    //
 
     if (_eventHandler.isWtIncompatible()) {
         // WT 4.4+ will refuse to startup on datafiles left behind by 4.0 and earlier. This behavior
@@ -2254,6 +2260,7 @@ boost::optional<Timestamp> WiredTigerKVEngine::getRecoveryTimestamp() const {
                     "WiredTiger is configured to not support providing a recovery timestamp");
     }
 
+    ////启动的时候通过get=recovery从wt中获取recovertimestamp，见WiredTigerKVEngine::WiredTigerKVEngine
     if (_recoveryTimestamp.isNull()) {
         return boost::none;
     }

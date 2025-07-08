@@ -140,6 +140,7 @@ void MemberData::setAuthIssue(Date_t now) {
     _lastResponse.setSyncingTo(HostAndPort());
 }
 
+//TopologyCoordinator::setLastOptime->MemberData::advanceLastAppliedOpTimeAndWallTime
 void MemberData::setLastAppliedOpTimeAndWallTime(OpTimeAndWallTime opTime, Date_t now) {
     invariant(opTime.opTime.isNull() || opTime.wallTime > Date_t());
     _lastUpdate = now;

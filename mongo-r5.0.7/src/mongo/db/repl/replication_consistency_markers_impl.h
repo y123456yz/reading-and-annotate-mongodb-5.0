@@ -134,6 +134,8 @@ private:
 
     StorageInterface* _storageInterface;
     const NamespaceString _minValidNss;
+    ////    static constexpr StringData kDefaultOplogTruncateAfterPointNamespace = "local.replset.oplogTruncateAfterPoint"_sd;
+    // ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary更新里面的内容(journal)
     const NamespaceString _oplogTruncateAfterPointNss;
     const NamespaceString _initialSyncIdNss;
 
@@ -163,6 +165,8 @@ private:
     //
     // Note: these values lack their own specific concurrency control, instead depending on the
     // serialization that exists in setting the oplog truncate after point.
+
+    //从local库的replset.oplogTruncateAfterPoint表中获取的
     boost::optional<Timestamp> _lastNoHolesOplogTimestamp;
     boost::optional<OpTimeAndWallTime> _lastNoHolesOplogOpTimeAndWallTime;
 };

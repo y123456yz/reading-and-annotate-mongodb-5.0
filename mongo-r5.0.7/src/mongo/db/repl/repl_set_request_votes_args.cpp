@@ -112,6 +112,7 @@ ConfigVersionAndTerm ReplSetRequestVotesArgs::getConfigVersionAndTerm() const {
     return ConfigVersionAndTerm(_cfgVer, _cfgTerm);
 }
 
+//也就是rs.status()中的lastAppliedWallTime统计//
 OpTime ReplSetRequestVotesArgs::getLastAppliedOpTime() const {
     return _lastAppliedOpTime;
 }

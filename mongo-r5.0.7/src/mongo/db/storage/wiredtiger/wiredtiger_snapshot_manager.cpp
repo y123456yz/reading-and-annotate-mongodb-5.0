@@ -41,6 +41,8 @@
 
 namespace mongo {
 
+//更新commit point的时候，会更新stable timestamp，同时更新commitsnapshot快照
+//ReplicationCoordinatorImpl::_setStableTimestampForStorage-》ReplicationCoordinatorImpl::_updateCommittedSnapshot->ReplicationCoordinatorExternalStateImpl::updateCommittedSnapshot
 void WiredTigerSnapshotManager::setCommittedSnapshot(const Timestamp& timestamp) {
     stdx::lock_guard<Latch> lock(_committedSnapshotMutex);
 

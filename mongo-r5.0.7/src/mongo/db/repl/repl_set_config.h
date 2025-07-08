@@ -587,6 +587,7 @@ private:
     bool _isInitialized = false;
     int _majorityVoteCount = 0;
     int _writableVotingMembersCount = 0;
+    //也就是rs.conf()中的writeMajorityCount
     int _writeMajority = 0;
     int _totalVotingMembers = 0;
     ReplSetTagConfig _tagConfig;

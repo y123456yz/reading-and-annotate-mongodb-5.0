@@ -114,6 +114,8 @@ public:
 
     void checkpoint() override;
 
+    //wiredtiger默认为true
+    //"storage.journal.enabled"配置指定默认为true
     bool isDurable() const override {
         return _durable;
     }
@@ -437,6 +439,7 @@ private:
     std::string _sizeStorerUri;
     mutable ElapsedTracker _sizeStorerSyncTracker;
 
+    //默认为true //"storage.journal.enabled"配置指定默认为true
     bool _durable;
     bool _ephemeral;  // whether we are using the in-memory mode of the WT engine
     const bool _inRepairMode;
@@ -465,6 +468,7 @@ private:
     mutable Mutex _oplogPinnedByBackupMutex =
         MONGO_MAKE_LATCH("WiredTigerKVEngine::_oplogPinnedByBackupMutex");
     boost::optional<Timestamp> _oplogPinnedByBackup;
+    ////启动的时候通过get=recovery从wt中获取recovertimestamp，见WiredTigerKVEngine::WiredTigerKVEngine
     Timestamp _recoveryTimestamp;
 
     // Tracks the stable and oldest timestamps we've set on the storage engine.
@@ -489,6 +493,7 @@ private:
 
     // Pins the oplog so that OplogStones will not truncate oplog history equal or newer to this
     // timestamp.
+    //也就是local库的replset.oplogTruncateAfterPoint表中的时间戳, 也就是从存储引擎通过"get=all_durable"获取的时间戳
     AtomicWord<std::uint64_t> _pinnedOplogTimestamp;
 };
 }  // namespace mongo

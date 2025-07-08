@@ -1,0 +1,284 @@
+oplog空洞:
+. 为什么会有 oplog hole？
+并发写入：MongoDB primary 支持多个写操作并发进行，每个写操作分配自己的 timestamp。
+写入顺序不保证：这些写操作可能在不同线程、不同事务中提交，写入 oplog 的顺序和 durable 到磁盘的顺序可能和 timestamp 顺序不一致。
+部分 entry 还未 durable：某些 timestamp 较小的 oplog entry 可能因为事务未提交、磁盘延迟等原因还没写入或 durable，而 timestamp 更大的 entry 已经 durable。
+2. 举例说明
+假设有如下并发写入：
+写操作	timestamp	实际 durable 顺序
+op1	100	2
+op2	101	1
+op3	102	3
+op2 先 durable 到磁盘（timestamp 101），
+op1 还在进行中（timestamp 100），
+op3 还没 durable（timestamp 102）。
+此时，oplog 上 100 这个位置是个“洞”，因为 101 已经 durable，但 100 还没 durable。
+3. 影响
+all_durable timestamp 只能推进到最小的“无洞”位置（即所有更小 timestamp 的 entry 都 durable 了）。
+majority commit point、stable timestamp 等都不能超过有洞的位置，否则可能读到不完整或不一致的数据。
+4. 直观图示
+Apply to transaction_...
+未持久化
+[100] 还没 durable, [101] 已经 durable， [102] 还没 durable。
+这时 [100] 是一个“oplog hole”。
+总结
+oplog hole 是指 oplog 某个 timestamp 的 entry 还没 durable，但更大的 timestamp 已经 durable。
+主要出现在 primary 并发写入时。
+影响 all_durable、majority commit、快照读等一致性点的推进。
+
+
+
+
+
+
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken->ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+journalFlush线程定期sync wal日志到磁盘，然后从存储引擎获取all_duration对应时间戳， 这个时间戳最后写到了local库的replset.oplogTruncateAfterPoint
+all_durable:  从存储引擎通过"get=all_durable"获取的时间戳,也就是存储引擎已提交事物的最小时间戳， 也就是oplog没有空洞的时间戳，可以参考ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+    // Fetch the latest all_durable value from the storage engine. This value will be a timestamp
+    // that has no holes (uncommitted transactions with lower timestamps) behind it.
+
+    // Note: the oplogTruncateAfterPoint is written to disk and updated periodically with WT's
+    // all_durable timestamp, which tracks the oplog no holes point. The oplog entry associated with
+    // the no holes point is sent along to replication (the return value here) to update their
+    // durable timestamp. Since the WT all_durable timestamp doesn't always match a particular oplog
+    // entry (it can be momentarily between oplog entry timestamps), _lastNoHolesOplogTimestamp
+    // tracks the oplog entry so as to ensure we send out all updates before desisting until new
+    // operations occur.
+
+
+recover timestamp: 通过get=recovery从wt中获取recovertimestamp，获取接口在WiredTigerKVEngine::getRecoveryTimestamp，最终在eplicationRecoveryImpl::recoverFromOplog中节点启动的时候执行以下流程:
+  1. 如果oplog中有空洞，则读取replset.oplogTruncateAfterPoint表，truncateAfterOpTime后的oplog为有空洞的oplog，在cappedTruncateAfter接口中删除 [recover timestamp, truncateAfterOpTime]这段oplog的数据，这部分oplog数据就是要恢复的增量数据。
+    然后回放[recover time, truncateAfterOpTime]的数据，实现增量数据恢复。
+  2.  如果oplog没有空洞，也就是replset.oplogTruncateAfterPoint表的时间戳为0，则直接回放[recover time, oplog顶部topOfOplog]这段oplog,也就是recover time后的所有oplog
+  
+
+mongod重启时候数据恢复流程:
+1. wiredtiger_open()启动wt引擎,这里面会通过最新checkpoint获取全量数据,然后通过wal恢复增量数据,保证可以恢复到数据的最新状态.由于db.test.stats().wiredTiger
+    可以看到数据表的log是关闭的, db.oplog.rs.status().wiredTiger可以看出oplog表的log是打开的, 也就是只有oplog表才会记录WAL，所以mongod启动的时候会依赖oplog
+    来恢复增量数据(见ReplicationRecoveryImpl::recoverFromOplog)，这个流程主从节点启动的时候会走上面的recover timestamp章节的流程来恢复增量数据。
+
+2. 此外，如果主节点挂掉了，并且有一部分数据没有同步到从节点，这时候就会走rollback流程, rollback流程的判断标准:
+   从节点拉取oplog时，本地lastApplied OpTime在主节点oplog中不存在，则会进入_runRollback，最终找到公共事件点后在RollbackImpl::_writeRollbackFileForNamespace接口
+   把公共事件点后面的oplog对应的回滚数据(通过oplog中的_id反查)写的数据目录的rollback文件夹中
+
+
+
+wal持久化
+1. 默认写writeconcern的j=false，因此每次commit提交事物的时候，最终不会立马刷盘。
+2. mongodb wal真正持久化由journalFlush线程定期完成，默认100ms， 或者客户端请求writeconcern中j=ture，则会通知journalFlush线程进行wal日志持久化
+
+
+
+
+
+lastApplied optime: 也就是rs.status()中的lastAppliedWallTime
+  这个时间戳代表的是当前已经顺序回放的(无空洞)oplog最新的时间戳，例如从节点拿了一批数据，对应optime为1，2，3，4，5。由于5个线程回放，每个现场回放一条
+  因此在某个时间点的oplog表中的几条数据的optime为1，2，3，5，这时候4这个线程还没有回放完成，这时候的lastapplied time=3。此时，4就存在一个空洞，但是这个空洞
+  是暂时的，4这个线程回放完成后，就没空洞了，这时候lastapplied time会更新为5.
+  注意: 这时候的数据只是写到了oplog表对应wal文件和b+ tree内存中，wal文件这时候只是在page cache，可能还没有真正罗盘
+
+lastDurable optime: 也就是rs.status()中的lastDurableWallTime, wal持久化时机可以参考前面的《wal持久化》
+  这个时间戳和lastApply区别是，是否已经通过journalFlush线程把oplog表对应Wal文件通过fsync持久化到了磁盘。
+
+
+commit point： 如果启用了(cfg.settings.writeConcernMajorityJournalDefault=true)也就是rs.status()中满足多数同步的lastDurableWallTime，否则为满足多数同步的lastApplyWallTime, 然后进行stable timestamp同步更新
+   大多数（majority）节点都已持久化的最新操作的OpTime， 具体算法参考TopologyCoordinator::updateLastCommittedOpTimeAndWallTime，例如现在有5个投票节点
+   5个节点的lastDurable optime[10, 12, 13, 15, 20], 则大多数节点的复制位置=13.
+  
+  commit point推进的时候和存储引擎commit timestamp的关系: 推进commit point同时会推进stable timestamp，同时会在setCommittedSnapshot更新commit snapshot
+  void ReplicationCoordinatorImpl::_updateLastCommittedOpTimeAndWallTime(WithLock lk) {
+    if (_topCoord->updateLastCommittedOpTimeAndWallTime()) {
+        _setStableTimestampForStorage(lk);
+    }
+  }
+
+
+commit point由主节点推进，何时推进？
+  1. 从节点会定期向主节点上报replSetUpdatePosition 命令，报告自己当前复制和应用到的最新 OpTime（包括 lastApplied、lastDurable 等）。
+  2. 主节点收到上报的lastApplied、lastDutable等optime后，primary维护一张所有成员的同步进度表，同时计算commit point
+  3. 除了上面的replsetupdateposition逻辑外，从节点还会定期发送replSetHeartbeat心跳给主节点，主节点收到这个心跳请求后，在应答信息中会带上主节点
+     中维护的这个表信息(包括commit point, 所有节点的lastApplied、 lastDrable等)给从节点，最终全网复制进度就都知道了。
+  4. 除了从节点定期上报外，从节点复制一批数据后也会主动上报，这样commit point实时性更高，具体实现的伪代码如下:
+      // OplogApplierImpl::_run
+      while (true) {
+          batch = getNextBatch();
+          applyBatch(batch);
+          replCoord->setMyLastAppliedOpTimeAndWallTimeForward(...); // 这里会触发主动上报
+      }
+
+      // ReplicationCoordinatorImpl::setMyLastAppliedOpTimeAndWallTimeForward
+      if (lastApplied前进了) {
+          _reportUpstream_inlock();
+      }
+
+      // ReplicationCoordinatorImpl::_reportUpstream_inlock
+      if (不是primary) {
+          _externalState->forwardSecondaryProgress(); // 触发 replSetUpdatePosition
+      }
+
+
+  假设下面的场景： 因为3被2个节点复制，所以commit point=3
+  主节点 oplog：1，2，3，4，5
+  从节点1 oplog：1，2，3
+  从节点2 oplog：1，2
+  
+  commit point为什么不会被回滚？
+  以上面的假设场景为例，当主节点挂掉，副本集选主时，只能从拥有最新 oplog 的节点中选举，因此会选择从节点1为新主，新主包含有3。每个投票节点在收到投票请求时，会比较候选节点的 lastAppliedOpTime 和自己的 lastAppliedOpTime。
+  如果候选节点的 oplog 落后于自己，则拒绝投票。参考以下代码实现:
+  void TopologyCoordinator::processReplSetRequestVotes(const ReplSetRequestVotesArgs& args,
+                                                     ReplSetRequestVotesResponse* response) {
+    // ...省略部分代码...
+    else if (args.getLastAppliedOpTime() < getMyLastAppliedOpTime()) {
+        response->setVoteGranted(false);
+        response->setReason(
+            "candidate's data is staler than mine. candidate's last applied OpTime: {}, "
+            "my last applied OpTime: {}"_format(args.getLastAppliedOpTime().toString(),
+                                                getMyLastAppliedOpTime().toString()));
+    }
+    // ...省略部分代码...
+}
+
+commit point 什么时候推进？
+  1 应用完一批 oplog（batch）后，如果本地 lastApplied/lastDurable 有变化
+  每次应用完一批 oplog（即 OplogApplierImpl::run 的一轮 batch）后，如果 lastApplied/lastDurable 前进了，会调用 ReplicationCoordinatorImpl::_reportUpstream_inlock。
+  这个函数会通过 ReplicationCoordinatorExternalStateImpl::forwardSecondaryProgress 触发一次 replSetUpdatePosition 上报。
+  2 特殊事件触发
+  切换 primary/step up/down、initial sync、rollback、catchup、drain 等状态变化时，也会主动上报进度。
+  这些事件通常会导致 lastApplied/lastDurable 发生跳变，必须立刻通知主节点。
+  3 满足定时器/阈值条件
+  即使 batch 很小或者进度没变，定时器到期也会通过replSetUpdatePosition定期上报。
+
+
+
+writeConcernMajorityJournalDefault和setDefaultRWConcern的关系
+  rs.conf()中查看 writeConcernMajorityJournalDefault, 这个主要是保证oplog wal的写多数派保证
+  
+  作用：
+  true（默认）：majority 写入必须在多数节点的 journal 持久化后才算成功（更安全，但更慢）。
+  false：majority 写入只要写入到多数节点的内存即可，不要求 journal（更快，但有极端情况下丢失的风险）。
+
+  控制 majority write concern 时，是否要求写入 journal（即磁盘日志）才算“多数派确认”,如果writeConcernMajorityJournalDefault为false，实际上oplog wal只到了操作系统的page cache，不保证真正的wal刷盘。
+  通过下面的命令修改配置:
+  rs.conf()
+  cfg.writeConcernMajorityJournalDefault=false
+  rs.reconfig(cfg)
+
+
+
+
+什么是 snapshot?
+  在WiredTiger里,snapshot通常由一个timestamp(时间戳)标识，代表“只读事务只能看到这个时间点及之前的数据”。
+  WiredTiger通过begin_transaction("read_timestamp=...")创建snapshot, 该snapshot只暴露<=指定timestamp的数据版本。
+
+
+
+
+majority read concern的执行流程--db.coll.find({ ... }, { readConcern: { level: "majority" } })
+  1. 命令入口:findCmd
+  2. 解析出 readConcern: "majority"
+  3. 函数:ReplicationCoordinatorImpl::waitUntilSnapshotCommitted(),如果committed snapshot(commit point)还没到达所需时间点，则阻塞等待。
+  4. 获取committed snapshot timestamp,ReplicationCoordinatorImpl::getCurrentCommittedSnapshotOpTime(),返回当前commit point对应的 OpTime(即 timestamp)。
+  5. 开启快照事务(SnapshotManager层),在 commit point(committed snapshot)上开启WiredTiger只读事务。代码如下:
+    void WiredTigerSnapshotManager::beginTransactionOnCommittedSnapshot(WiredTigerSession* session) {
+      Timestamp ts = getCommittedSnapshot();
+      session->begin_transaction("read_timestamp=ts");
+    }
+  6. 开启WiredTiger事务(Session 层),调用底层 WiredTiger C API,传递 read_timestamp。
+    void WiredTigerSession::begin_transaction(const char* config) {
+      int ret = _session->begin_transaction(_session, config);
+      // 错误处理
+    }
+  7. WiredTiger MVCC 快照实现,__wt_txn_visible_all只返回 start_ts <= read_timestamp 的数据版本。
+
+read concern配置为snapshot的执行流程--db.coll.find({ ... }, { readConcern: { level: "snapshot" } })
+  整体流程和read concern(majority)类似,只是第5步的read_timestamp被设置为事务开始时的 clusterTime/operationTime，参考TransactionParticipant::Participant::_setReadSnapshot
+  read concern(majority):每次读都用最新 commit point,快照点可能不同。
+  read concern(snapshot):事务开始时分配一次，事务内所有读都用同一个 snapshot timestamp。
+
+
+durable_timestamp:
+ 全局"durable_timestamp"、“oldest_timestamp”、“stable_timestamp”的推进区别
+  1. MongoDB 不会通过 WT_CONNECTION::set_timestamp 设置 global "durable_timestamp"。
+  2. MongoDB 只设置 stable_timestamp 和 oldest_timestamp。
+  3. global durable timestamp 由 WiredTiger 内部根据每个事务的 durable timestamp 自动推进。
+  
+  MongoDB 主要在以下场景调用 WiredTigerRecoveryUnit::setDurableTimestamp：
+   分布式事务（prepared transaction）commit 时
+     TransactionParticipant::commitPreparedTransaction
+          └─> setDurableTimestamp
+   恢复/应用 prepared transaction 的 oplog commit/abort entry 时
+     _applyTransactionFromOplogChain
+          └─> setDurableTimestamp
+   上面设置好最终在WiredTigerRecoveryUnit::_txnClose使用上面设置的_durableTimestamp, _txnClose会调用WT_SESSION::commit_transaction(durable_timestamp=xx, commit_timestamp=xx)，从而让存储引擎wt推进全局 durable_timestamp。
+
+   MongoDB 在每个事务 commit 时会设置本次操作的 durable timestamp。
+   WiredTiger 自动推进全局 durable_timestamp（见 txn_global->durable_timestamp）。
+   查询 getAllDurableTimestamp() 可获得当前全局 durable_timestamp。
+
+ 在 WiredTigerRecoveryUnit::_txnClose（见 wiredtiger_recovery_unit.cpp）中，MongoDB 提交事务时会这样调用 WiredTiger：
+   if (!_commitTimestamp.isNull()) {
+      s->timestamp_transaction_uint(s, WT_TS_TXN_TYPE_COMMIT, _commitTimestamp.asULL());
+   }
+   if (!_durableTimestamp.isNull()) {
+       s->timestamp_transaction_uint(s, WT_TS_TXN_TYPE_DURABLE, _durableTimestamp.asULL());
+   }
+   wtRet = s->commit_transaction(s, nullptr);
+ 
+ durable_timestamp的来源:
+   1. 对于非 prepared 普通写操作，MongoDB 通常不显式设置 durable_timestamp，只设置 commit timestamp。
+      在这种情况下，WiredTiger 内部会自动将 durable_timestamp 设为 commit_timestamp（见 txn_timestamp.c）：
+    if (!F_ISSET(txn, WT_TXN_HAS_TS_DURABLE))
+      txn->durable_timestamp = commit_ts;
+   2. 对于prepared transaction，MongoDB 会显式设置 durable timestamp。 设置函数setPrepareTimestamp  
+     WiredTigerRecoveryUnit::setDurableTimestamp(Timestamp timestamp)由上层逻辑（如 oplog 应用、prepared commit）调用，
+     传入的 durableTimestamp 通常是commit oplog entry 的 timestamp，通过server层的以下代码分配timestamp：
+      OplogSlot slot = reserveOplogSlot(...)
+      Timestamp commitTimestamp = slot.getTimestamp()
+
+   注意: global durable_timestamp:是所有已提交事务的最大 durable timestamp,即“系统最大durable timestamp”。
+     不是“所有数据都已落盘的时间点”，而是所有"已提交"事务中 durable timestamp 的最大值，也就是执行了s->commit_transaction(s, nullpt))中
+     的所有事物的durable_timestamp的最大值。每个事物执行commit_transaction在底层都会有一个durable_timestamp(要么由server层直接指定，要么
+     wt底层自动赋值为commit_timestamp)。
+     假设下面3个并发请求进行事物操作：
+      线程1: txn1->commit_transaction(durable_timestamp=100, commit_timestamp=100)
+      线程2: txn2->commit_transaction(durable_timestamp=101, commit_timestamp=101)
+      线程3: txn3->commit_transaction(durable_timestamp=102, commit_timestamp=102)
+      当前线程1、线程2、线程3都已提交，并且线程1、线程3执行完成并清理了内存txn1、txn3，线程2还在内存中，此时global durable_timestamp=102，并且tx2还在内存中，
+      从下面的代码可以看出，这时候"get=all_durable"获取的时间戳为100,这样就可以跳过所有空洞的数据：
+      __txn_global_query_timestamp(...) {//mongo server层_fetchAllDurableValue调用该函数。
+        ts = txn_global->durable_timestamp;
+        ......
+        for (i = 0, s = txn_global->txn_shared_list; i < session_cnt; i++, s++) {
+            __txn_get_durable_timestamp(s, &tmpts);
+            if (tmpts != WT_TS_NONE && --tmpts < ts)
+                ts = tmpts;
+        }
+      }
+
+
+oldest_timestamp:
+  1. oldest_timestamp 的作用
+    oldest_timestamp 控制 WiredTiger 可以丢弃的最早历史版本数据的时间点。
+    只有早于 oldest_timestamp 的历史数据才会被清理，MVCC 读和快照恢复都依赖它。
+  2. 推进时机
+   MongoDB 推进 global oldest_timestamp 的典型时机：
+   推进 stable_timestamp 时，通常会顺带推进 oldest_timestamp（让 oldest 跟随 stable 滞后一定窗口）。
+   void WiredTigerKVEngine::setStableTimestamp(Timestamp stableTimestamp, bool force) {
+     ...
+     setOldestTimestampFromStable();
+   }
+
+   void WiredTigerKVEngine::setOldestTimestampFromStable() {
+      // 计算新的 oldest timestamp（通常为 stableTimestamp - lag）
+      Timestamp newOldest = ...;
+      setOldestTimestamp(newOldest, false);
+    }
+
+   void WiredTigerKVEngine::setOldestTimestamp(Timestamp newOldestTimestamp, bool force) {
+     ...
+     std::string config = force
+        ? fmt::format("force=true,oldest_timestamp={:x}", newOldestTimestamp.asULL())
+        : fmt::format("oldest_timestamp={:x}", newOldestTimestamp.asULL());
+     invariantWTOK(_conn->set_timestamp(_conn, config.c_str()));
+     ...
+   }

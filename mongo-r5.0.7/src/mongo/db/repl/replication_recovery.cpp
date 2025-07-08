@@ -243,6 +243,7 @@ private:
     std::unique_ptr<DBClientCursor> _cursor;
 };
 
+//获取recovertimestamp，也就是get=recovery从wt中获取recovertimestamp
 boost::optional<Timestamp> recoverFromOplogPrecursor(OperationContext* opCtx,
                                                      StorageInterface* storageInterface) {
     if (!storageInterface->supportsRecoveryTimestamp(opCtx->getServiceContext())) {
@@ -373,6 +374,7 @@ void ReplicationRecoveryImpl::recoverFromOplogUpTo(OperationContext* opCtx, Time
         str::stream() << "Cannot recover from oplog while the node is performing an initial sync",
         !_consistencyMarkers->getInitialSyncFlag(opCtx));
 
+    //获取recovertimestamp，也就是get=recovery从wt中获取recovertimestamp
     auto recoveryTS = recoverFromOplogPrecursor(opCtx, _storageInterface);
     if (!recoveryTS) {
         LOGV2_FATAL_NOTRACE(31399,
@@ -451,13 +453,18 @@ void ReplicationRecoveryImpl::recoverFromOplog(OperationContext* opCtx,
     // However, if the storage engine returns "none", the storage engine does not have a stable
     // checkpoint and we must recover from an unstable checkpoint instead.
     bool isRollbackRecovery = stableTimestamp != boost::none;
+    //如果是wiredtiger这里为true
     const bool supportsRecoveryTimestamp =
+        //WiredTigerKVEngine::supportsRecoveryTimestamp()
         _storageInterface->supportsRecoveryTimestamp(opCtx->getServiceContext());
     if (!stableTimestamp && supportsRecoveryTimestamp) {
+        //WiredTigerKVEngine::getRecoveryTimestamp()
+        //启动的时候通过get=recovery从wt中获取recovertimestamp，见WiredTigerKVEngine::WiredTigerKVEngine
         stableTimestamp = _storageInterface->getRecoveryTimestamp(opCtx->getServiceContext());
     }
 
     // This may take an IS lock on the oplog collection.
+    //ReplicationRecoveryImpl::_truncateOplogIfNeededAndThenClearOplogTruncateAfterPoint
     _truncateOplogIfNeededAndThenClearOplogTruncateAfterPoint(opCtx, &stableTimestamp);
 
     hangAfterOplogTruncationInRollback.pauseWhileSet();
@@ -667,6 +674,7 @@ Timestamp ReplicationRecoveryImpl::_applyOplogOperations(OperationContext* opCtx
           "startPoint"_attr = startPoint,
           "endPoint"_attr = endPoint);
 
+    //下面会回放startPoint -> endPoint之间的所有oplog
     OplogBufferLocalOplog oplogBuffer(startPoint, endPoint);
     oplogBuffer.startup(opCtx);
 
@@ -773,6 +781,7 @@ void ReplicationRecoveryImpl::_truncateOplogTo(OperationContext* opCtx,
     }
 
     // Find an oplog entry <= truncateAfterTimestamp.
+    //找到第一条时间戳小于等于timestamp的oplog数据，这条数据后面的oplog数据需要删除
     boost::optional<BSONObj> truncateAfterOplogEntryBSON =
         _storageInterface->findOplogEntryLessThanOrEqualToTimestamp(
             opCtx, oplogCollection, truncateAfterTimestamp);
@@ -833,6 +842,8 @@ void ReplicationRecoveryImpl::_truncateOplogTo(OperationContext* opCtx,
                                                        truncateAfterOplogEntryTs);
         }
     }
+
+    //把带有空洞的oplog数据删除掉
     oplogCollection->cappedTruncateAfter(opCtx, truncateAfterRecordId, /*inclusive*/ false);
 
     LOGV2(21554,
@@ -842,11 +853,12 @@ void ReplicationRecoveryImpl::_truncateOplogTo(OperationContext* opCtx,
 }
 
 void ReplicationRecoveryImpl::_truncateOplogIfNeededAndThenClearOplogTruncateAfterPoint(
+    //启动的时候通过get=recovery从wt中获取的recovertimestamp
     OperationContext* opCtx, boost::optional<Timestamp>* stableTimestamp) {
 
     Timestamp truncatePoint = _consistencyMarkers->getOplogTruncateAfterPoint(opCtx);
 
-    if (truncatePoint.isNull()) {
+    if (truncatePoint.isNull()) {//如果没有空洞，直接返回
         // There are no holes in the oplog that necessitate truncation.
         return;
     }

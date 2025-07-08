@@ -48,6 +48,7 @@ namespace mongo {
 namespace repl {
 
 constexpr StringData ReplicationConsistencyMarkersImpl::kDefaultMinValidNamespace;
+//    static constexpr StringData kDefaultOplogTruncateAfterPointNamespace = "local.replset.oplogTruncateAfterPoint"_sd;
 constexpr StringData ReplicationConsistencyMarkersImpl::kDefaultOplogTruncateAfterPointNamespace;
 constexpr StringData ReplicationConsistencyMarkersImpl::kDefaultInitialSyncIdNamespace;
 
@@ -73,6 +74,7 @@ ReplicationConsistencyMarkersImpl::ReplicationConsistencyMarkersImpl(
     NamespaceString initialSyncIdNss)
     : _storageInterface(storageInterface),
       _minValidNss(minValidNss),
+      // static constexpr StringData kDefaultOplogTruncateAfterPointNamespace = "local.replset.oplogTruncateAfterPoint"_sd;
       _oplogTruncateAfterPointNss(oplogTruncateAfterPointNss),
       _initialSyncIdNss(initialSyncIdNss) {}
 
@@ -413,9 +415,13 @@ void ReplicationConsistencyMarkersImpl::setOplogTruncateAfterPoint(OperationCont
     _lastNoHolesOplogOpTimeAndWallTime = boost::none;
 }
 
+//获取oplogTruncateAfterPoint表中的时间戳
+//{ "_id" : "oplogTruncateAfterPoint", "oplogTruncateAfterPoint" : Timestamp(1751339616, 1) }
 boost::optional<OplogTruncateAfterPointDocument>
 ReplicationConsistencyMarkersImpl::_getOplogTruncateAfterPointDocument(
     OperationContext* opCtx) const {
+    ////    static constexpr StringData kDefaultOplogTruncateAfterPointNamespace = "local.replset.oplogTruncateAfterPoint"_sd;
+    //获取表中的数据
     auto doc = _storageInterface->findById(
         opCtx, _oplogTruncateAfterPointNss, kOplogTruncateAfterPointId["_id"]);
 
@@ -480,10 +486,12 @@ void ReplicationConsistencyMarkersImpl::setOplogTruncateAfterPointToTopOfOplog(
     setOplogTruncateAfterPoint(opCtx, timestamp);
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken->ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+//  journalFlusher线程会定期sync wal日志，然后会走到这里更新local库replset.oplogTruncateAfterPoint表中的内容(从存储引擎通过"get=all_durable"获取的时间戳)，如果是主节点并返回表中的时间戳，从节点返回none
 boost::optional<OpTimeAndWallTime>
 ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary(
     OperationContext* opCtx) {
-
+    //非主节点这里直接返回
     if (!isOplogTruncateAfterPointBeingUsedForPrimary()) {
         // Stepdown clears the truncate point, after which the truncate point is set manually as
         // needed, so nothing should be done here -- else we might truncate something we should not.
@@ -514,8 +522,10 @@ ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary(
 
     // Update the oplogTruncateAfterPoint to the storage engine's reported oplog timestamp with no
     // holes behind it in-memory (only, not on disk, despite the name).
+    //truncateTimestamp是从存储引擎通过"get=all_durable"获取的时间戳
     auto truncateTimestamp = _storageInterface->getAllDurableTimestamp(opCtx->getServiceContext());
 
+    //说明没有变化，直接返回
     if (_lastNoHolesOplogTimestamp && truncateTimestamp == _lastNoHolesOplogTimestamp) {
         invariant(_lastNoHolesOplogOpTimeAndWallTime);
         // Return the last durable no-holes oplog entry. Nothing has changed in the system yet.
@@ -523,6 +533,7 @@ ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary(
     } else if (truncateTimestamp != Timestamp(StorageEngine::kMinimumTimestamp)) {
         // Throw write interruption errors up to the caller so that durability attempts can be
         // retried.
+        //更新local库的replset.oplogTruncateAfterPoint表的时间戳，这个时间戳实际上是通过存储引擎的"get=all_durable"配置获取
         uassertStatusOK(_setOplogTruncateAfterPoint(opCtx, truncateTimestamp));
     } else {
         // The all_durable timestamp has not yet been set: there have been no oplog writes since

@@ -1147,7 +1147,10 @@ private:
     // a new term.
     Date_t _electionSleepUntil;
 
-    // OpTime of the latest committed operation.
+    // OpTime of the latest committed operation. 
+    //rs.status().optimes中的统计 rs.status().optimes.lastCommittedOpTime
+    //_lastCommittedOpTimeAndWallTime 表示副本集内“已被大多数节点确认持久化”的最新操作时间点及其物理时间，
+    //参考TopologyCoordinator::updateLastCommittedOpTimeAndWallTime->advanceLastCommittedOpTimeAndWallTime
     OpTimeAndWallTime _lastCommittedOpTimeAndWallTime;
 
     // OpTime representing our transition to PRIMARY and the start of our term.

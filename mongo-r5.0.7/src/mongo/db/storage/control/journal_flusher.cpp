@@ -141,6 +141,7 @@ void JournalFlusher::run() {
         // requested (or shutdown). If _disablePeriodicFlushes is set, then the thread will not
         // wake up until a journal flush is externally requested.
 
+        //这里可以保证周期性的刷journal日志(默认journalCommitInterval=100ms)，或者有_flushJournalNowCV信号通知，例如writeconcern的j为ture
         auto deadline =
             Date_t::now() + Milliseconds(storageGlobalParams.journalCommitIntervalMs.load());
 

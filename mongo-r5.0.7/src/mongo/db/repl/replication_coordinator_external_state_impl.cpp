@@ -995,10 +995,12 @@ void ReplicationCoordinatorExternalStateImpl::clearCommittedSnapshot() {
     FeatureCompatibilityVersion::clearLastFCVUpdateTimestamp();
 }
 
+//ReplicationCoordinatorImpl::_updateCommittedSnapshot->ReplicationCoordinatorExternalStateImpl::updateCommittedSnapshot
 void ReplicationCoordinatorExternalStateImpl::updateCommittedSnapshot(
     const OpTime& newCommitPoint) {
     auto manager = _service->getStorageEngine()->getSnapshotManager();
     if (manager) {
+        //WiredTigerSnapshotManager::setCommittedSnapshot
         manager->setCommittedSnapshot(newCommitPoint.getTimestamp());
     }
     _service->getOpObserver()->onMajorityCommitPointUpdate(_service, newCommitPoint);
@@ -1082,6 +1084,11 @@ std::size_t ReplicationCoordinatorExternalStateImpl::getOplogFetcherInitialSyncM
     return oplogFetcherInitialSyncMaxFetcherRestarts.load();
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken->ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+//  journalFlusher线程会定期sync wal日志，然后会走到这里更新local库replset.oplogTruncateAfterPoint表中的内容，如果是主节点并返回表中的时间戳，从节点返回none
+
+//返回值如果是主节点，返回的是从存储引擎通过"get=all_durable"获取的时间戳，从节点返回的是_lastAppliedWallTime
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken
 JournalListener::Token ReplicationCoordinatorExternalStateImpl::getToken(OperationContext* opCtx) {
     // If in state PRIMARY, the oplogTruncateAfterPoint must be used for the Durable timestamp
     // in order to avoid majority confirming any writes that could later be truncated.
@@ -1091,13 +1098,18 @@ JournalListener::Token ReplicationCoordinatorExternalStateImpl::getToken(Operati
     // holes, therefore it is safe to skip updating the oplogTruncateAfterPoint that tracks
     // oplog holes.
     if (MONGO_likely(opCtx)) {
+        //JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->ReplicationCoordinatorExternalStateImpl::getToken->ReplicationConsistencyMarkersImpl::refreshOplogTruncateAfterPointIfPrimary
+        //  journalFlusher线程会定期sync wal日志，然后会走到这里更新local库replset.oplogTruncateAfterPoint表中的内容，如果是主节点并返回表中的时间戳，从节点返回none
+        // truncatePoint时间戳实际上就是再次从存储引擎通过"get=all_durable"获取的时间戳
         auto truncatePoint = repl::ReplicationProcess::get(opCtx)
                                  ->getConsistencyMarkers()
                                  ->refreshOplogTruncateAfterPointIfPrimary(opCtx);
-        if (truncatePoint) {
+        if (truncatePoint) { //主节点可以从local.replset.oplogTruncateAfterPoint获取到时间戳，然后这里直接返回，从节点走后面的分支
             return truncatePoint.get();
         }
     }
+
+    //从节点一般走这里，返回从节点的_lastAppliedWallTime
 
     // All other repl states use the 'lastApplied'.
     //
@@ -1115,6 +1127,8 @@ JournalListener::Token ReplicationCoordinatorExternalStateImpl::getToken(Operati
         /*rollbackSafe=*/true);
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable
 void ReplicationCoordinatorExternalStateImpl::onDurable(const JournalListener::Token& token) {
     repl::ReplicationCoordinator::get(_service)->setMyLastDurableOpTimeAndWallTimeForward(token);
 }

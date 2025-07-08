@@ -74,10 +74,12 @@ struct StorageGlobalParams {
     // Runs a repair routine on all databases.
     bool repair;
 
+    //"storage.journal.enabled"配置，默认为true
     bool dur;  // --dur durability (now --journal)
 
     // --journalCommitInterval
     static constexpr int kMaxJournalCommitIntervalMs = 500;
+    //默认100ms
     AtomicWord<int> journalCommitIntervalMs;
 
     // --notablescan

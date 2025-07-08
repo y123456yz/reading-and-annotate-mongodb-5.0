@@ -1155,6 +1155,7 @@ Status StorageInterfaceImpl::deleteByFilter(OperationContext* opCtx,
     });
 }
 
+//找到第一条时间戳小于等于timestamp的oplog数据
 boost::optional<BSONObj> StorageInterfaceImpl::findOplogEntryLessThanOrEqualToTimestamp(
     OperationContext* opCtx, const CollectionPtr& oplog, const Timestamp& timestamp) {
     invariant(oplog);

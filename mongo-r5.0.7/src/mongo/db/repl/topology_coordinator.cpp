@@ -2016,6 +2016,7 @@ void TopologyCoordinator::prepareStatusResponse(const ReplSetStatusArgs& rsStatu
     response->append("writableVotingMembersCount", _rsConfig.getWritableVotingMembersCount());
 
     // New optimes, to hold them all.
+    //rs.status().optimes统计
     BSONObjBuilder optimes;
     _lastCommittedOpTimeAndWallTime.opTime.append(&optimes, "lastCommittedOpTime");
 
@@ -2816,16 +2817,34 @@ void TopologyCoordinator::_stepDownSelfAndReplaceWith(int newPrimary) {
     _setLeaderMode(LeaderMode::kNotLeader);
 }
 
+/*
+举例：
+收集所有 voter 的 OpTime
+得到集合：[10, 12, 13, 15, 20]
+排序
+排序后还是：[10, 12, 13, 15, 20]
+计算 majority
+5 个节点，majority = ⌊5/2⌋ + 1 = 3
+取第 majority 个大的 OpTime
+取第 3 大（从小到大排序后，倒数第 3 个）：
+votingNodesOpTimesAndWallTimes[size - majority]
+即：5 - 3 = 2，下标为 2 的元素是 13
+commit point = 13
+*/
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable->ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward
+// ->ReplicationCoordinatorImpl::_setMyLastDurableOpTimeAndWallTime-》ReplicationCoordinatorImpl::_updateLastCommittedOpTimeAndWallTime
 bool TopologyCoordinator::updateLastCommittedOpTimeAndWallTime() {
     // If we're not primary or we're stepping down due to learning of a new term then we must not
     // advance the commit point.  If we are stepping down due to a user request, however, then it
     // is safe to advance the commit point, and in fact we must since the stepdown request may be
     // waiting for the commit point to advance enough to be able to safely complete the step down.
-    if (!_iAmPrimary() || _leaderMode == LeaderMode::kSteppingDown) {
+    if (!_iAmPrimary() || _leaderMode == LeaderMode::kSteppingDown) {//从节点直接返回
         return false;
     }
 
     // Whether we use the applied or durable OpTime for the commit point is decided here.
+    //获取cfg.settings.writeConcernMajorityJournalDefault这个配置,高版本默认为true
     const bool useDurableOpTime = _rsConfig.getWriteConcernMajorityShouldJournal();
 
     std::vector<OpTimeAndWallTime> votingNodesOpTimesAndWallTimes;
@@ -2839,18 +2858,27 @@ bool TopologyCoordinator::updateLastCommittedOpTimeAndWallTime() {
             const OpTimeAndWallTime appliedOpTime = {memberData.getLastAppliedOpTime(),
                                                      memberData.getLastAppliedWallTime()};
             const OpTimeAndWallTime opTime = useDurableOpTime ? durableOpTime : appliedOpTime;
+
+            //所有投票节点的durabale time添加到数组中, 也就是rs.status()中的lastDurableWallTime统计
             votingNodesOpTimesAndWallTimes.push_back(opTime);
         }
     }
 
     invariant(votingNodesOpTimesAndWallTimes.size() > 0);
+    //投票节点不满足要求，直接返回false
     if (votingNodesOpTimesAndWallTimes.size() <
         static_cast<unsigned long>(_rsConfig.getWriteMajority())) {
         return false;
     }
+
+    //duration
     std::sort(votingNodesOpTimesAndWallTimes.begin(), votingNodesOpTimesAndWallTimes.end());
 
     // need the majority to have this OpTime
+    //也就是确定大多数投票节点的durableWallTime,例如一共5个节点，writemajority为3，有4个投票节点，4个投票节点的durationWallTime分别是4，3，2，1(主节点4，3个vote从节点分别为3，2，1)
+    //  则committedOpTime为votingNodesOpTimesAndWallTimes[4-3]=2,也就是大部分节点的durationWallTime为2
+
+    //  committedOpTime也就是代表多数节点复制的时间戳
     OpTimeAndWallTime committedOpTime =
         votingNodesOpTimesAndWallTimes[votingNodesOpTimesAndWallTimes.size() -
                                        _rsConfig.getWriteMajority()];
@@ -2859,6 +2887,8 @@ bool TopologyCoordinator::updateLastCommittedOpTimeAndWallTime() {
     return advanceLastCommittedOpTimeAndWallTime(committedOpTime, fromSyncSource);
 }
 
+//TopologyCoordinator::updateLastCommittedOpTimeAndWallTime->advanceLastCommittedOpTimeAndWallTime
+// 更新_lastCommittedOpTimeAndWallTime，表示副本集内“已被大多数节点确认”的最新操作时间点及其物理时间，即多数节点已经复制到该时间点
 bool TopologyCoordinator::advanceLastCommittedOpTimeAndWallTime(OpTimeAndWallTime committedOpTime,
                                                                 bool fromSyncSource,
                                                                 bool forInitiate) {
@@ -2930,6 +2960,7 @@ bool TopologyCoordinator::advanceLastCommittedOpTimeAndWallTime(OpTimeAndWallTim
                 "Updating _lastCommittedOpTimeAndWallTime to {_lastCommittedOpTimeAndWallTime}",
                 "Updating _lastCommittedOpTimeAndWallTime",
                 "_lastCommittedOpTimeAndWallTime"_attr = committedOpTime);
+    //rs.status().optimes中的统计
     _lastCommittedOpTimeAndWallTime = committedOpTime;
     return true;
 }

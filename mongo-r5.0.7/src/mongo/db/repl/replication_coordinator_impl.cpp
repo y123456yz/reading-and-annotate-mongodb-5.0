@@ -475,7 +475,7 @@ bool ReplicationCoordinatorImpl::_startLoadLocalConfig(
         fassert(501402, _replicationProcess->incrementRollbackID(opCtx));
     }
 
-    LOGV2_DEBUG(4280503, 1, "Attempting to load local replica set configuration document");
+    LOGV2(4280503, "Attempting to load local replica set configuration document");
     StatusWith<BSONObj> cfg = _externalState->loadLocalConfigDocument(opCtx);
     if (!cfg.isOK()) {
         LOGV2(21313,
@@ -730,7 +730,7 @@ void ReplicationCoordinatorImpl::_finishLoadLocalConfig(
 }
 
 void ReplicationCoordinatorImpl::_startDataReplication(OperationContext* opCtx,
-                                                       std::function<void()> startCompleted) {
+                                                      std::function<void()> startCompleted) {
     if (_startedSteadyStateReplication.swap(true)) {
         // This is not the first call.
         return;
@@ -848,7 +848,7 @@ void ReplicationCoordinatorImpl::startup(OperationContext* opCtx,
         if (ReplSettings::shouldRecoverFromOplogAsStandalone()) {
             uassert(ErrorCodes::InvalidOptions,
                     str::stream() << "Cannot set parameter 'recoverToOplogTimestamp' "
-                                  << "when recovering from the oplog as a standalone",
+                                   << "when recovering from the oplog as a standalone",
                     recoverToOplogTimestamp.empty());
             _replicationProcess->getReplicationRecovery()->recoverFromOplogAsStandalone(opCtx);
         }
@@ -945,7 +945,7 @@ bool ReplicationCoordinatorImpl::enterQuiesceModeIfSecondary(Milliseconds quiesc
 }
 
 bool ReplicationCoordinatorImpl::inQuiesceMode() const {
-    stdx::lock_guard lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     return _inQuiesceMode;
 }
 
@@ -999,9 +999,9 @@ void ReplicationCoordinatorImpl::shutdown(OperationContext* opCtx) {
         const auto status = initialSyncerCopy->shutdown();
         if (!status.isOK()) {
             LOGV2_WARNING(21410,
-                          "InitialSyncer shutdown failed: {error}",
-                          "InitialSyncer shutdown failed",
-                          "error"_attr = status);
+                           "InitialSyncer shutdown failed: {error}",
+                           "InitialSyncer shutdown failed",
+                           "error"_attr = status);
         }
         initialSyncerCopy->join();
         initialSyncerCopy.reset();
@@ -1246,7 +1246,7 @@ void ReplicationCoordinatorImpl::signalDrainComplete(OperationContext* opCtx,
         AllowNonLocalWritesBlock writesAllowed(opCtx);
         OpTime firstOpTime = _externalState->onTransitionToPrimary(opCtx);
         ReplicaSetAwareServiceRegistry::get(_service).onStepUpComplete(opCtx,
-                                                                       firstOpTime.getTerm());
+                                                                    firstOpTime.getTerm());
         lk.lock();
 
         _topCoord->completeTransitionToPrimary(firstOpTime);
@@ -1299,7 +1299,7 @@ void ReplicationCoordinatorImpl::setMyLastAppliedOpTimeAndWallTimeForward(
                       opTime.getTimestamp() < myLastAppliedOpTime.getTimestamp());
         }
 
-        if (_readWriteAbility->canAcceptNonLocalWrites(lock) && _rsConfig.getWriteMajority() == 1) {
+        if (_readWriteAbility->canAcceptNonLocalWrites(opCtx) && _rsConfig.getWriteMajority() == 1) {
             // Single vote primaries may have a lagged stable timestamp due to paring back the
             // stable timestamp to the all committed timestamp.
             _setStableTimestampForStorage(lock);
@@ -1307,6 +1307,8 @@ void ReplicationCoordinatorImpl::setMyLastAppliedOpTimeAndWallTimeForward(
     }
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable->ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward
 void ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward(
     const OpTimeAndWallTime& opTimeAndWallTime) {
     stdx::unique_lock<Latch> lock(_mutex);
@@ -1345,14 +1347,6 @@ void ReplicationCoordinatorImpl::resetMyLastOpTimes() {
     stdx::unique_lock<Latch> lock(_mutex);
     _resetMyLastOpTimes(lock);
     _reportUpstream_inlock(std::move(lock));
-}
-
-void ReplicationCoordinatorImpl::_resetMyLastOpTimes(WithLock lk) {
-    LOGV2_DEBUG(21332, 1, "Resetting durable/applied optimes");
-    // Reset to uninitialized OpTime
-    bool isRollbackAllowed = true;
-    _setMyLastAppliedOpTimeAndWallTime(lk, OpTimeAndWallTime(), isRollbackAllowed);
-    _setMyLastDurableOpTimeAndWallTime(lk, OpTimeAndWallTime(), isRollbackAllowed);
 }
 
 void ReplicationCoordinatorImpl::_reportUpstream_inlock(stdx::unique_lock<Latch> lock) {
@@ -1424,11 +1418,15 @@ void ReplicationCoordinatorImpl::_setMyLastAppliedOpTimeAndWallTime(
     }
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable->ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward
+// ->ReplicationCoordinatorImpl::_setMyLastDurableOpTimeAndWallTime
 void ReplicationCoordinatorImpl::_setMyLastDurableOpTimeAndWallTime(
     WithLock lk, const OpTimeAndWallTime& opTimeAndWallTime, bool isRollbackAllowed) {
     _topCoord->setMyLastDurableOpTimeAndWallTime(
         opTimeAndWallTime, _replExecutor->now(), isRollbackAllowed);
     // If we are using durable times to calculate the commit level, update it now.
+    // 副本的rs.conf可以修改，高版本默认为true, cfg.settings.writeConcernMajorityJournalDefault = false来修改
     if (_rsConfig.getWriteConcernMajorityShouldJournal()) {
         _updateLastCommittedOpTimeAndWallTime(lk);
     }
@@ -1462,7 +1460,7 @@ OpTime ReplicationCoordinatorImpl::getMyLastDurableOpTime() const {
 }
 
 Status ReplicationCoordinatorImpl::_validateReadConcern(OperationContext* opCtx,
-                                                        const ReadConcernArgs& readConcern) {
+                                                       const ReadConcernArgs& readConcern) {
     if (readConcern.getArgsAfterClusterTime() &&
         readConcern.getLevel() != ReadConcernLevel::kMajorityReadConcern &&
         readConcern.getLevel() != ReadConcernLevel::kLocalReadConcern &&
@@ -4199,7 +4197,7 @@ void ReplicationCoordinatorImpl::_fulfillTopologyChangePromise(WithLock lock) {
 }
 
 void ReplicationCoordinatorImpl::incrementTopologyVersion() {
-    stdx::lock_guard lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     _fulfillTopologyChangePromise(lk);
 }
 
@@ -4783,6 +4781,14 @@ ReplicationCoordinatorImpl::_setCurrentRSConfig(WithLock lk,
     return action;
 }
 
+/**
+ * Helper to wake waiters in _replicationWaiterList waiting for opTime <= the opTime passed in
+ * (or all waiters if opTime passed in is boost::none) that are doneWaitingForReplication.
+ */
+/*
+唤醒等待写关注的客户端
+可能有客户端在等待某个写操作被 majority/durable 确认（如 {w:majority, j:true}），此时会调用 _wakeReadyWaiters，唤醒那些现在已经满足条件的等待者
+*/
 void ReplicationCoordinatorImpl::_wakeReadyWaiters(WithLock lk, boost::optional<OpTime> opTime) {
     _replicationWaiterList.setValueIf_inlock(
         [this](const OpTime& opTime, const SharedWaiterHandle& waiter) {
@@ -5043,6 +5049,9 @@ ChangeSyncSourceAction ReplicationCoordinatorImpl::shouldChangeSyncSourceOnError
     return ChangeSyncSourceAction::kContinueSyncing;
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable->ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward
+// ->ReplicationCoordinatorImpl::_setMyLastDurableOpTimeAndWallTime-》ReplicationCoordinatorImpl::_updateLastCommittedOpTimeAndWallTime
 void ReplicationCoordinatorImpl::_updateLastCommittedOpTimeAndWallTime(WithLock lk) {
     if (_topCoord->updateLastCommittedOpTimeAndWallTime()) {
         _setStableTimestampForStorage(lk);
@@ -5055,6 +5064,7 @@ void ReplicationCoordinatorImpl::attemptToAdvanceStableTimestamp() {
 }
 
 OpTime ReplicationCoordinatorImpl::_recalculateStableOpTime(WithLock lk) {
+    //被多数节点复制的oplog时间戳，也就是被多数节点复制的oplog对应时间戳
     auto commitPoint = _topCoord->getLastCommittedOpTime();
     auto lastApplied = _topCoord->getMyLastAppliedOpTime();
     if (_currentCommittedSnapshot) {
@@ -5129,6 +5139,9 @@ OpTime ReplicationCoordinatorImpl::_recalculateStableOpTime(WithLock lk) {
 
 MONGO_FAIL_POINT_DEFINE(disableSnapshotting);
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable->WiredTigerSessionCache::waitUntilDurable
+// ->ReplicationCoordinatorExternalStateImpl::onDurable->ReplicationCoordinatorImpl::setMyLastDurableOpTimeAndWallTimeForward
+// ->ReplicationCoordinatorImpl::_setMyLastDurableOpTimeAndWallTime-》ReplicationCoordinatorImpl::_updateLastCommittedOpTimeAndWallTime
 void ReplicationCoordinatorImpl::_setStableTimestampForStorage(WithLock lk) {
     if (!_shouldSetStableTimestamp) {
         LOGV2_DEBUG(21395, 2, "Not setting stable timestamp for storage");
@@ -5447,12 +5460,15 @@ void ReplicationCoordinatorImpl::_prepareOplogQueryMetadata_inlock(int rbid,
     _topCoord->prepareOplogQueryMetadata(rbid).writeToMetadata(builder).transitional_ignore();
 }
 
+//获取cfg.settings.writeConcernMajorityJournalDefault这个配置 
 bool ReplicationCoordinatorImpl::getWriteConcernMajorityShouldJournal() {
     stdx::unique_lock lock(_mutex);
     return getWriteConcernMajorityShouldJournal_inlock();
 }
 
+//cfg.settings.writeConcernMajorityJournalDefault = false; 该值默认为true
 bool ReplicationCoordinatorImpl::getWriteConcernMajorityShouldJournal_inlock() const {
+    //获取cfg.settings.writeConcernMajorityJournalDefault这个配置为ture还是false
     return _rsConfig.getWriteConcernMajorityShouldJournal();
 }
 
@@ -5696,6 +5712,7 @@ void ReplicationCoordinatorImpl::createWMajorityWriteAvailabilityDateWaiter(OpTi
     _replicationWaiterList.add_inlock(opTime, waiter);
 }
 
+//ReplicationCoordinatorImpl::_setStableTimestampForStorage调用
 bool ReplicationCoordinatorImpl::_updateCommittedSnapshot(WithLock lk,
                                                           const OpTime& newCommittedSnapshot) {
     if (gTestingSnapshotBehaviorInIsolation) {

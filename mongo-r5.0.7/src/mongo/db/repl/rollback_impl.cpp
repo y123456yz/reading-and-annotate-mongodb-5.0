@@ -240,6 +240,7 @@ Status RollbackImpl::runRollback(OperationContext* opCtx) {
     _listener->onRollbackIDIncremented();
 
     // This function cannot fail without terminating the process.
+    // 这里面做rollback删除回滚数据并记录到rollback目录
     _runPhaseFromAbortToReconstructPreparedTxns(opCtx, commonPoint);
     _listener->onPreparedTransactionsReconstructed();
 
@@ -918,6 +919,7 @@ Status RollbackImpl::_processRollbackOp(OperationContext* opCtx, const OplogEntr
             // We call BSONElement::wrap() on each _id element to create a new BSONObj with an owned
             // buffer, as the underlying storage may be gone when we access this map to write
             // rollback files.
+            //oplog日志中的_id存入该map,最终在RollbackImpl::_writeRollbackFiles中写入rollback文件
             _observerInfo.rollbackDeletedIdsMap[uuid.get()].insert(idElem.wrap());
             const auto cmdName = opType == OpTypeEnum::kInsert ? kInsertCmdName : kUpdateCmdName;
             ++_observerInfo.rollbackCommandCounts[cmdName];
@@ -1074,6 +1076,12 @@ Status RollbackImpl::_processRollbackOpForApplyOps(OperationContext* opCtx,
     return Status::OK();
 }
 
+/*
+遍历本地和远程 oplog，逐条比对，直到找到最后一个相同的 entry（即“共同点”）。
+记录下这个点的 OpTime、RecordId、wall clock time 等信息。
+如果找不到共同点，说明两者历史完全不一致，回滚失败。
+找到共同点后，还会校验该点是否满足一些一致性约束（如不能早于 commit point、stable timestamp 等）。
+*/
 StatusWith<RollBackLocalOperations::RollbackCommonPoint> RollbackImpl::_findCommonPoint(
     OperationContext* opCtx) {
     if (_isInShutdown()) {

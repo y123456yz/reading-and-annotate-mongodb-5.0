@@ -1658,23 +1658,23 @@ Future<void> ExecCommandDatabase::_commandExec() {
         }
     };
 
-	//mongodÊÕµ½µÄmongosÂ·ÓÉ°æ±¾ÐÅÏ¢mongos<mongod: "error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
+	//mongodï¿½Õµï¿½ï¿½ï¿½mongosÂ·ï¿½É°æ±¾ï¿½ï¿½Ï¢mongos<mongod: "error":{"code":13388,"codeName":"StaleConfig","errmsg":"version mismatch detected for test.test2","ns":"test.test2","vReceived
 	//checkShardVersionOrThrow->CollectionShardingRuntime::checkShardVersionOrThrow ()
-	//°æ±¾¼ì²é£¬°æ±¾²»Ò»ÖÂÔò»áÐ¯´ø"version mismatch detected for"£¬ÔÚÍâ²ãµÄÒÔÏÂÂß¼­¿ªÊ¼»ñÈ¡Â·ÓÉÐÅÏ¢
-	// Õâ¸öÂß¼­Ö»»á¶ÔÐ¡°æ±¾½øÐÐ¼ì²é£¬Èç¹û´ó°æ±¾²»Ò»ÖÂ£¬ÔòÔÚÍâ²ãµÄÏÂÃæµÄµ÷ÓÃÂß¼­½øÐÐmetaÔªÊý¾ÝË¢ÐÂ
+	//ï¿½æ±¾ï¿½ï¿½é£¬ï¿½æ±¾ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½Ð¯ï¿½ï¿½"version mismatch detected for"ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß¼ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½È¡Â·ï¿½ï¿½ï¿½ï¿½Ï¢
+	// ï¿½ï¿½ï¿½ï¿½ß¼ï¿½Ö»ï¿½ï¿½ï¿½Ð¡ï¿½æ±¾ï¿½ï¿½ï¿½Ð¼ï¿½é£¬ï¿½ï¿½ï¿½ï¿½ï¿½æ±¾ï¿½ï¿½Ò»ï¿½Â£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½ï¿½ß¼ï¿½ï¿½ï¿½ï¿½ï¿½metaÔªï¿½ï¿½ï¿½ï¿½Ë¢ï¿½ï¿½
 	
-	//ÇëÇóµÃÍâ²ã»áÅÐ¶ÏÉÏÃæµÄStaleConfigÒì³£,È»ºóÖØÐÂ´Óconfig»ñÈ¡×îÐÂµÄÂ·ÓÉÐÅÏ¢
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½StaleConfigï¿½ì³£,È»ï¿½ï¿½ï¿½ï¿½ï¿½Â´ï¿½configï¿½ï¿½È¡ï¿½ï¿½ï¿½Âµï¿½Â·ï¿½ï¿½ï¿½ï¿½Ï¢
 	//ExecCommandDatabase::_commandExec()->refreshDatabase->onShardVersionMismatchNoExcept->onShardVersionMismatch
 	//	->recoverRefreshShardVersion->forceGetCurrentMetadata
 	
 	
-	//mongodÊÕµ½µÄmongosÂ·ÓÉ°æ±¾ÐÅÏ¢mongos>mongod:	Ë¢Â·ÓÉÍê³Éºó£¬²Å½øÐÐ¶ÔÓ¦ÇëÇó
-	//shard version²»Æ¥ÅäÂ·ÓÉË¢ÐÂÁ÷³Ì: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
-	//db version²»Æ¥ÅäÁ÷³Ì: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
+	//mongodï¿½Õµï¿½ï¿½ï¿½mongosÂ·ï¿½É°æ±¾ï¿½ï¿½Ï¢mongos>mongod:	Ë¢Â·ï¿½ï¿½ï¿½ï¿½Éºó£¬²Å½ï¿½ï¿½Ð¶ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½
+	//shard versionï¿½ï¿½Æ¥ï¿½ï¿½Â·ï¿½ï¿½Ë¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ExecCommandDatabase::_commandExec()->refreshCollection->onShardVersionMismatchNoExcept
+	//db versionï¿½ï¿½Æ¥ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½: ExecCommandDatabase::_commandExec()->refreshDatabase->onDbVersionMismatch
 
 
 	
-	//db°æ±¾ÐÅÏ¢¼ì²é²Î¿¼DatabaseShardingState::checkDbVersion
+	//dbï¿½æ±¾ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½Î¿ï¿½DatabaseShardingState::checkDbVersion
     return runCommand()
         .onError<ErrorCodes::StaleDbVersion>([this](Status s) -> Future<void> {
             auto opCtx = _execContext->getOpCtx();
@@ -1691,7 +1691,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                     _refreshedDatabase = true;
                     if (!opCtx->isContinuingMultiDocumentTransaction()) {
                         _resetLockerStateAfterShardingUpdate(opCtx);
-						//Â·ÓÉÓÐÎÊÌâ£¬»ñÈ¡µ½×îÐÂÂ·ÓÉÐÅÏ¢ºó£¬ÖØÐÂÖ´ÐÐSQL
+						//Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£¬ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö´ï¿½ï¿½SQL
                         return _commandExec();
                     }
                 }
@@ -1699,7 +1699,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
 
             return s;
         })
-        //shard version°æ±¾¼ì²éÏà¹ØÒì³£
+        //shard versionï¿½æ±¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ì³£
         .onErrorCategory<ErrorCategory::StaleShardVersionError>([this](Status s) -> Future<void> {
             auto opCtx = _execContext->getOpCtx();
 
@@ -1714,7 +1714,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                         _refreshedCollection = true;
                         if (!opCtx->isContinuingMultiDocumentTransaction()) {
                             _resetLockerStateAfterShardingUpdate(opCtx);
-							//Â·ÓÉÓÐÎÊÌâ£¬»ñÈ¡µ½×îÐÂÂ·ÓÉÐÅÏ¢ºó£¬ÖØÐÂÖ´ÐÐSQL
+							//Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£¬ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö´ï¿½ï¿½SQL
                             return _commandExec();
                         }
                     }
@@ -1742,7 +1742,7 @@ Future<void> ExecCommandDatabase::_commandExec() {
                     _refreshedCatalogCache = true;
                     if (!opCtx->isContinuingMultiDocumentTransaction()) {
                         _resetLockerStateAfterShardingUpdate(opCtx);
-						//Â·ÓÉÓÐÎÊÌâ£¬»ñÈ¡µ½×îÐÂÂ·ÓÉÐÅÏ¢ºó£¬ÖØÐÂÖ´ÐÐSQL
+						//Â·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â£¬ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½ï¿½ï¿½Ï¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö´ï¿½ï¿½SQL
                         return _commandExec();
                     }
                 }
@@ -2218,7 +2218,7 @@ DbResponse receivedGetMore(OperationContext* opCtx,
     return dbresponse;
 }
 
-//mongosµÄHandleRequest::handleRequest()µ÷ÓÃ£¬Ö´ÐÐ¶ÁÇëÇó»Øµ÷
+//mongosï¿½ï¿½HandleRequest::handleRequest()ï¿½ï¿½ï¿½Ã£ï¿½Ö´ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½
 struct CommandOpRunner : HandleRequest::OpRunner {
     using HandleRequest::OpRunner::OpRunner;
     Future<DbResponse> run() override {
@@ -2235,7 +2235,7 @@ struct SynchronousOpRunner : HandleRequest::OpRunner {
     }
 };
 
-//mongosµÄHandleRequest::handleRequest()µ÷ÓÃ£¬Ö´ÐÐ¶ÁÇëÇó»Øµ÷
+//mongosï¿½ï¿½HandleRequest::handleRequest()ï¿½ï¿½ï¿½Ã£ï¿½Ö´ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½
 struct QueryOpRunner : SynchronousOpRunner {
     using SynchronousOpRunner::SynchronousOpRunner;
     DbResponse runSync() override {
@@ -2458,7 +2458,7 @@ void onHandleRequestException(const Status& status) {
     LOGV2_ERROR(4879802, "Failed to handle request", "error"_attr = redact(status));
 }
 
-//mongos·þÎñÈë¿ÚServiceEntryPointMongos::handleRequest    mongod·þÎñÈë¿ÚServiceEntryPointMongod::handleRequest
+//mongosï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ServiceEntryPointMongos::handleRequest    mongodï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ServiceEntryPointMongod::handleRequest
 Future<DbResponse> ServiceEntryPointCommon::handleRequest(
     OperationContext* opCtx,
     const Message& m,
@@ -2469,7 +2469,7 @@ Future<DbResponse> ServiceEntryPointCommon::handleRequest(
     auto opRunner = hr.makeOpRunner();
     invariant(opRunner);
 
-	//ÔËÐÐ¶ÔÓ¦command
+	//ï¿½ï¿½ï¿½Ð¶ï¿½Ó¦command
     return opRunner->run()
         .then([hr = std::move(hr)](DbResponse response) mutable {
             hr.completeOperation(response);

@@ -251,6 +251,7 @@ void WiredTigerRecoveryUnit::_ensureSession() {
     }
 }
 
+//JournalFlusher::run()->WiredTigerRecoveryUnit::waitUntilDurable
 bool WiredTigerRecoveryUnit::waitUntilDurable(OperationContext* opCtx) {
     invariant(!_inUnitOfWork(), toString(_getState()));
     invariant(!opCtx->lockState()->isLocked() || storageGlobalParams.repair);

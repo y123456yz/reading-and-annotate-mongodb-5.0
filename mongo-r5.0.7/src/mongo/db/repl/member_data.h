@@ -110,6 +110,7 @@ public:
         return _health != 0;
     }
 
+    //也就是rs.status()中的lastDurableWallTime统计
     OpTime getLastAppliedOpTime() const {
         return _lastAppliedOpTime;
     }
@@ -291,10 +292,12 @@ private:
     bool _lastUpdateStale = false;
 
     // Last known OpTime that the replica has applied and journaled to.
+    // MemberData::setLastDurableOpTimeAndWallTime中复制
     OpTime _lastDurableOpTime;
     Date_t _lastDurableWallTime = Date_t();
 
     // Last known OpTime that the replica has applied, whether journaled or unjournaled.
+    //MemberData::setLastAppliedOpTimeAndWallTime复制
     OpTime _lastAppliedOpTime;
     Date_t _lastAppliedWallTime = Date_t();
 

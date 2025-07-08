@@ -441,6 +441,7 @@ public:
         // For simplicity, this BSONObj set uses the simple binary comparison, as it is never wrong
         // to consider two _ids as distinct even if the collection default collation would put them
         // in the same equivalence class.
+        //oplog日志中的_id存入该map
         stdx::unordered_map<UUID, SimpleBSONObjUnorderedSet, UUID::Hash> rollbackDeletedIdsMap;
 
         // True if the shard identity document was rolled back.
